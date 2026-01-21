@@ -1,0 +1,4 @@
+enum PrayerRequestMode {
+  normal,
+  sos,
+}

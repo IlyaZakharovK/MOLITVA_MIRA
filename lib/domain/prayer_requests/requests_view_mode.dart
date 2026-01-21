@@ -1,0 +1,4 @@
+enum RequestsViewMode {
+  user,
+  moderation,
+}
