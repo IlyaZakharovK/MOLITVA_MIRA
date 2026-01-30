@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/dioceses/diocese.dart';
 import '../../providers.dart';
 import '../common/slide_captcha_sheet.dart';
+import '../widgets/agreeDialog.dart';
 import '../widgets/agreement_block.dart';
 import '../widgets/app_message_bar.dart';
 import '../widgets/input.dart';
@@ -45,12 +46,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _password2Ctrl = TextEditingController();
 
   bool _agreed = false;
-  bool _captchaVerified = false;
 
   final Map<String, String?> _errors = {};
   bool _navigated = false;
 
   final _emailRe = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
+
   bool _isValidEmail(String s) => _emailRe.hasMatch(s.trim());
 
   @override
@@ -127,12 +128,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       }
     }
 
-    if (!_agreed) {
-      _setError('agreement', 'Примите пользовательское соглашение');
-      firstError ??= 'Примите пользовательское соглашение';
-      ok = false;
-    }
-
     switch (_type) {
       case RegisterType.layman:
         ok = req('fullName', _fullNameCtrl.text, 'Введите имя') && ok;
@@ -151,10 +146,20 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           ok = false;
         }
 
-        ok = req('templeName', _templeNameCtrl.text, 'Введите храм/монастырь') && ok;
+        ok =
+            req('templeName', _templeNameCtrl.text, 'Введите храм/монастырь') &&
+            ok;
         ok = req('address', _addressCtrl.text, 'Введите адрес') && ok;
-        ok = req('rectorName', _rectorNameCtrl.text, 'Введите имя настоятеля') && ok;
-        ok = req('rectorPhone', _rectorPhoneCtrl.text, 'Введите телефон настоятеля') && ok;
+        ok =
+            req('rectorName', _rectorNameCtrl.text, 'Введите имя настоятеля') &&
+            ok;
+        ok =
+            req(
+              'rectorPhone',
+              _rectorPhoneCtrl.text,
+              'Введите телефон настоятеля',
+            ) &&
+            ok;
         break;
 
       case RegisterType.temple:
@@ -169,8 +174,16 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
         ok = req('templeName', _templeNameCtrl.text, 'Введите название') && ok;
         ok = req('address', _addressCtrl.text, 'Введите адрес') && ok;
-        ok = req('rectorName', _rectorNameCtrl.text, 'Введите имя настоятеля') && ok;
+        ok =
+            req('rectorName', _rectorNameCtrl.text, 'Введите имя настоятеля') &&
+            ok;
         break;
+    }
+
+    if (!_agreed) {
+      _setError('agreement', 'Примите пользовательское соглашение');
+      firstError ??= 'Примите пользовательское соглашение';
+      ok = false;
     }
 
     setState(() {});
@@ -194,31 +207,34 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   Future<void> _submit() async {
     if (!_validateAndShow()) return;
 
-    if (!_captchaVerified) {
-      final ok = await showSlideCaptchaSheet(context);
-      if (!ok) return;
-      if (!mounted) return;
-      setState(() => _captchaVerified = true);
-    }
+    final ok = await showSlideCaptchaSheet(context);
+    if (!ok) return;
 
-    await ref.read(authControllerProvider.notifier).register(
-      name: _fullNameCtrl.text.trim(),
-      email: _emailCtrl.text.trim(),
-      password1: _passwordCtrl.text,
-      password2: _password2Ctrl.text,
-      agree: _agreed ? 1 : 0,
-      type: switch (_type) {
-        RegisterType.layman => 1,
-        RegisterType.clergy => 2,
-        RegisterType.temple => 3,
-      },
-      phone: int.tryParse(_phoneCtrl.text.replaceAll(RegExp(r'\D'), '')) ?? 0,
-      diocesesId: _diocese?.id ?? 0,
-      hramName: _templeNameCtrl.text.trim(),
-      hramAddress: _addressCtrl.text.trim(),
-      nastName: _rectorNameCtrl.text.trim(),
-      nastPhone: int.tryParse(_rectorPhoneCtrl.text.replaceAll(RegExp(r'\D'), '')) ?? 0,
-    );
+    await ref
+        .read(authControllerProvider.notifier)
+        .register(
+          name: _fullNameCtrl.text.trim(),
+          email: _emailCtrl.text.trim(),
+          password1: _passwordCtrl.text,
+          password2: _password2Ctrl.text,
+          agree: _agreed ? 1 : 0,
+          type: switch (_type) {
+            RegisterType.layman => 1,
+            RegisterType.clergy => 2,
+            RegisterType.temple => 3,
+          },
+          phone:
+              int.tryParse(_phoneCtrl.text.replaceAll(RegExp(r'\D'), '')) ?? 0,
+          diocesesId: _diocese?.id ?? 0,
+          hramName: _templeNameCtrl.text.trim(),
+          hramAddress: _addressCtrl.text.trim(),
+          nastName: _rectorNameCtrl.text.trim(),
+          nastPhone:
+              int.tryParse(
+                _rectorPhoneCtrl.text.replaceAll(RegExp(r'\D'), ''),
+              ) ??
+              0,
+        );
   }
 
   void _navigateOnce(VoidCallback go) {
@@ -242,22 +258,25 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     final loading = auth.isLoading;
 
     // ✅ controller error → bar
-    ref.listen(
-      authControllerProvider.select((s) => s.errorMessage),
-          (prev, next) {
-        if (!context.mounted) return;
-        if (next != null && next.isNotEmpty && next != prev) {
-          showAppMessageBar(context, next);
-        }
-      },
-    );
+    ref.listen(authControllerProvider.select((s) => s.errorMessage), (
+      prev,
+      next,
+    ) {
+      if (!context.mounted) return;
+      if (next != null && next.isNotEmpty && next != prev) {
+        showAppMessageBar(context, next);
+      }
+    });
 
     // ✅ если появился pendingActivation — идём на подтверждение
     ref.listen(authControllerProvider, (prev, next) {
       if (!context.mounted) return;
-      if (prev?.pendingActivationEmail == null && next.pendingActivationEmail != null) {
+      if (prev?.pendingActivationEmail == null &&
+          next.pendingActivationEmail != null) {
         _navigateOnce(() {
-          Navigator.of(context).pushReplacementNamed('/activate', arguments: true);
+          Navigator.of(
+            context,
+          ).pushReplacementNamed('/activate', arguments: true);
         });
       }
     });
@@ -338,16 +357,26 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   if (_type == RegisterType.temple) ..._buildTemple(),
 
                   const SizedBox(height: 12),
-
                   AgreementBlock(
                     isChecked: _agreed,
                     isError: _errors['agreement'] != null,
-                    onChanged: (v) {
-                      setState(() => _agreed = v);
-                      if (v) _clearField('agreement');
+                    onChanged: (v) => setState(() => _agreed = v),
+                    onOpenPrivacy: () {
+                      final dio = ref.read(dioProvider);
+                      showAgreeDialog(
+                        context,
+                        dio: dio,
+                        docType: AgreeDocType.privacy,
+                      );
                     },
-                    onOpenPrivacy: () => _openDoc(_LegalDoc.privacy),
-                    onOpenAgreement: () => _openDoc(_LegalDoc.agreement),
+                    onOpenAgreement: () {
+                      final dio = ref.read(dioProvider);
+                      showAgreeDialog(
+                        context,
+                        dio: dio,
+                        docType: AgreeDocType.terms,
+                      );
+                    },
                   ),
 
                   const SizedBox(height: 14),
@@ -369,13 +398,13 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       onPressed: (loading) ? null : _submit,
                       child: loading
                           ? const SizedBox(
-                        height: 18,
-                        width: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
+                              height: 18,
+                              width: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
                           : const Text('Зарегистрироваться'),
                     ),
                   ),
@@ -383,7 +412,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   const SizedBox(height: 12),
 
                   TextButton(
-                    onPressed: loading ? null : () => Navigator.of(context).pop(),
+                    onPressed: loading
+                        ? null
+                        : () => Navigator.of(context).pop(),
                     child: const Text(
                       'Если есть аккаунт, войдите в него',
                       textAlign: TextAlign.center,
@@ -408,7 +439,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-                      onPressed: loading ? null : () => Navigator.of(context).pushNamed('/'),
+                      onPressed: loading
+                          ? null
+                          : () => Navigator.of(context).pushNamed('/'),
                       child: const Text('Вход'),
                     ),
                   ),
@@ -463,7 +496,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     ),
     const SizedBox(height: 10),
 
-    const Label('Ваш телефон', needs: false,),
+    const Label('Ваш телефон', needs: false),
     Input(
       controller: _phoneCtrl,
       hint: '',
@@ -566,7 +599,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   ];
 
   List<Widget> _buildTemple() => [
-
     const Label('E-mail'),
     Input(
       controller: _emailCtrl,
@@ -597,7 +629,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     ),
     const SizedBox(height: 10),
 
-    const Label('Ваш телефон', needs: false,),
+    const Label('Ваш телефон', needs: false),
     Input(
       controller: _phoneCtrl,
       hint: '',
@@ -652,6 +684,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
 class _LegalDocSheet extends StatelessWidget {
   final _LegalDoc doc;
+
   const _LegalDocSheet({required this.doc});
 
   @override
@@ -727,8 +760,10 @@ class _LegalDocSheet extends StatelessWidget {
 }
 
 /// Заглушки. Позже заменим на HTML/asset/API.
-const _privacyText = 'Политика конфиденциальности\n\n(Текст будет добавлен позже)';
-const _agreementText = 'Пользовательское соглашение\n\n(Текст будет добавлен позже)';
+const _privacyText =
+    'Политика конфиденциальности\n\n(Текст будет добавлен позже)';
+const _agreementText =
+    'Пользовательское соглашение\n\n(Текст будет добавлен позже)';
 
 class _RadioRow extends StatelessWidget {
   final RegisterType value;
@@ -754,7 +789,10 @@ class _RadioRow extends StatelessWidget {
             groupValue: groupValue,
             onChanged: (_) => onChanged(value),
           ),
-          Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+          Text(
+            title,
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+          ),
         ],
       ),
     );
@@ -793,7 +831,10 @@ class _PickerField extends StatelessWidget {
                 text,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ),
             const Icon(Icons.search, size: 18, color: Colors.black45),
@@ -806,10 +847,12 @@ class _PickerField extends StatelessWidget {
 
 class _DiocesePickerSheet extends ConsumerStatefulWidget {
   final int? selectedId;
+
   const _DiocesePickerSheet({required this.selectedId});
 
   @override
-  ConsumerState<_DiocesePickerSheet> createState() => _DiocesePickerSheetState();
+  ConsumerState<_DiocesePickerSheet> createState() =>
+      _DiocesePickerSheetState();
 }
 
 class _DiocesePickerSheetState extends ConsumerState<_DiocesePickerSheet> {
@@ -865,7 +908,10 @@ class _DiocesePickerSheetState extends ConsumerState<_DiocesePickerSheet> {
                   isDense: true,
                   filled: true,
                   fillColor: Colors.white,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 12,
+                  ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
                     borderSide: const BorderSide(color: Colors.black26),
@@ -875,12 +921,16 @@ class _DiocesePickerSheetState extends ConsumerState<_DiocesePickerSheet> {
               const SizedBox(height: 10),
               Expanded(
                 child: async.when(
-                  loading: () => const Center(child: CircularProgressIndicator()),
+                  loading: () =>
+                      const Center(child: CircularProgressIndicator()),
                   error: (e, _) => Center(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text('Не удалось загрузить список\n$e', textAlign: TextAlign.center),
+                        Text(
+                          'Не удалось загрузить список\n$e',
+                          textAlign: TextAlign.center,
+                        ),
                         const SizedBox(height: 10),
                         OutlinedButton(
                           onPressed: () => ref.invalidate(diocesesProvider),
@@ -891,8 +941,11 @@ class _DiocesePickerSheetState extends ConsumerState<_DiocesePickerSheet> {
                   ),
                   data: (items) {
                     final q = _norm(_searchCtrl.text.trim());
-                    final filtered =
-                    q.isEmpty ? items : items.where((d) => _norm(d.name).contains(q)).toList();
+                    final filtered = q.isEmpty
+                        ? items
+                        : items
+                              .where((d) => _norm(d.name).contains(q))
+                              .toList();
 
                     return ListView.builder(
                       controller: scrollCtrl,
@@ -905,7 +958,10 @@ class _DiocesePickerSheetState extends ConsumerState<_DiocesePickerSheet> {
                           dense: true,
                           title: Text(d.name),
                           trailing: selected
-                              ? const Icon(Icons.check, color: Color(0xFF3F4F86))
+                              ? const Icon(
+                                  Icons.check,
+                                  color: Color(0xFF3F4F86),
+                                )
                               : null,
                           onTap: () => Navigator.of(context).pop(d),
                         );

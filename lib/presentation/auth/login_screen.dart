@@ -17,7 +17,6 @@ class LoginScreen extends ConsumerStatefulWidget {
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _emailCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
-  bool _captchaVerified = false;
 
   final Map<String, String?> _errors = {};
   bool _navigated = false;
@@ -46,6 +45,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
       if (st.session != null) {
         _navigateOnce(() {
+          Navigator.of(context).pop();
           Navigator.of(context).pushReplacementNamed('/news');
         });
       }
@@ -108,12 +108,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Future<void> _submit() async {
     if (!_validateAndShow()) return;
 
-    if (!_captchaVerified) {
-      final ok = await showSlideCaptchaSheet(context);
-      if (!ok) return;
-      if (!mounted) return;
-      setState(() => _captchaVerified = true);
-    }
+    final ok = await showSlideCaptchaSheet(context);
+    if (!ok) return;
 
     ref.read(authControllerProvider.notifier).login(
       _emailCtrl.text.trim(),

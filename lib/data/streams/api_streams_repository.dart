@@ -5,6 +5,27 @@ import '../../domain/streams/streams_item.dart';
 import '../../domain/streams/stream_status.dart';
 import '../../domain/streams/streams_repository.dart';
 
+class LikeTranslationResult {
+  final String description;
+  final int count;
+
+  const LikeTranslationResult({required this.description, required this.count});
+}
+
+class OnlineUser {
+  final int id;
+  final String name;
+
+  const OnlineUser({required this.id, required this.name});
+}
+
+class OnlineUsersResult {
+  final int count;
+  final List<OnlineUser> users;
+
+  const OnlineUsersResult({required this.count, required this.users});
+}
+
 class ApiStreamsRepository implements StreamsRepository {
   ApiStreamsRepository({
     required Dio dio,
@@ -27,6 +48,13 @@ class ApiStreamsRepository implements StreamsRepository {
         'method': method,
         'data': data,
       },
+      options: Options(
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+        },
+      ),
     );
 
     final body = resp.data;
@@ -36,8 +64,12 @@ class ApiStreamsRepository implements StreamsRepository {
     return body;
   }
 
-  bool _isSuccess(Map<String, dynamic> body) => (body['status'] ?? '').toString() == 'success';
+  bool _isSuccess(Map<String, dynamic> body) {
+    final s = (body['status'] ?? '').toString().toLowerCase().trim();
+    return s == 'success' || s == 'ok';
+  }
   String _desc(Map<String, dynamic> body) => (body['description'] ?? 'Ошибка').toString();
+  int _toInt(dynamic v, {int def = 0}) => int.tryParse((v ?? def).toString()) ?? def;
 
   @override
   Future<StreamsPage> fetchStreams({
@@ -53,8 +85,10 @@ class ApiStreamsRepository implements StreamsRepository {
     };
 
     if (my) {
-      final userId = await _local.getToken();
-      if (userId == null) throw Exception('Нет user_id: не авторизован');
+      final raw = await _local.getToken();
+      if (raw == null) throw Exception('Нет user_id: не авторизован');
+      final userId = int.tryParse(raw.toString());
+      if (userId == null) throw Exception('Некорректный user_id');
       data['user_id'] = userId;
     }
 
@@ -79,11 +113,35 @@ class ApiStreamsRepository implements StreamsRepository {
     int mLimit = limit;
 
     if (meta is Map) {
-      total = int.tryParse((meta['total'] ?? total).toString()) ?? total;
-      mFrom = int.tryParse((meta['from'] ?? from).toString()) ?? from;
-      mLimit = int.tryParse((meta['limit'] ?? limit).toString()) ?? limit;
+      total = _toInt(meta['total'], def: total);
+      mFrom = _toInt(meta['from'], def: from);
+      mLimit = _toInt(meta['limit'], def: limit);
     }
 
     return StreamsPage(items: items, total: total, from: mFrom, limit: mLimit);
+  }
+
+  /// appLikeTranslation
+  Future<LikeTranslationResult> likeTranslation({
+    required int translationId,
+  }) async {
+    final raw = await _local.getToken();
+    if (raw == null) {
+      throw Exception('Нет user_id: не авторизован');
+    }
+    final userId = int.tryParse(raw.toString());
+    if (userId == null) {
+      throw Exception('Некорректный user_id');
+    }
+
+    final body = await _post('appLikeTranslation', {
+      'translation_id': translationId,
+      'user_id': userId,
+    });
+
+    if (!_isSuccess(body)) throw Exception(_desc(body));
+
+    final count = _toInt(body['count'], def: 0);
+    return LikeTranslationResult(description: _desc(body), count: count);
   }
 }

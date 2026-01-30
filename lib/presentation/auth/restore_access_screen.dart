@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers.dart';
 import '../common/slide_captcha_sheet.dart';
+import '../widgets/agreeDialog.dart';
 import '../widgets/agreement_block.dart';
 import '../widgets/app_message_bar.dart';
 import '../widgets/input.dart';
@@ -25,7 +26,6 @@ class _RestoreAccessScreenState extends ConsumerState<RestoreAccessScreen> {
 
   final _emailCtrl = TextEditingController();
   bool _agreed = false;
-  bool _captchaVerified = false;
 
   final Map<String, String?> _errors = {};
 
@@ -58,40 +58,48 @@ class _RestoreAccessScreenState extends ConsumerState<RestoreAccessScreen> {
   bool _validateAndShow() {
     _errors.clear();
 
+    bool ok = true;
+    String? firstError;
+
     final email = _emailCtrl.text.trim();
-    String? first;
 
     if (email.isEmpty) {
       _setError('email', 'Введите e-mail');
-      first ??= 'Введите e-mail';
+      firstError ??= 'Введите e-mail';
+      ok = false;
     } else if (!_isValidEmail(email)) {
       _setError('email', 'E-mail введен не корректно');
-      first ??= 'E-mail введен не корректно';
+      firstError ??= 'E-mail введен не корректно';
+      ok = false;
     }
 
     if (!_agreed) {
       _setError('agreement', 'Примите пользовательское соглашение');
-      first ??= 'Примите пользовательское соглашение';
+      firstError ??= 'Примите пользовательское соглашение';
+      ok = false;
     }
 
     setState(() {});
 
-    if (first != null) {
-      showAppMessageBar(context, first);
+    if (firstError != null) {
+      showAppMessageBar(context, firstError);
       return false;
     }
-    return true;
+    return ok;
   }
 
   Future<void> _submit() async {
-    if (!_captchaVerified) {
-      final ok = await showSlideCaptchaSheet(context);
-      if (!ok) return;
-      if (!mounted) return;
-      setState(() => _captchaVerified = true);
+    // Сначала валидируем
+    if (!_validateAndShow()) {
+      // Если валидация не прошла, показываем ошибку и выходим
+      return;
     }
 
-    if (!_validateAndShow()) return;
+    // Все поля в порядке — показываем капчу
+    final ok = await showSlideCaptchaSheet(context);
+    if (!ok) return;
+
+    // Капча пройдена — выполняем восстановление доступа
     await ref
         .read(authControllerProvider.notifier)
         .restoreAccess(_emailCtrl.text.trim());
@@ -187,12 +195,23 @@ class _RestoreAccessScreenState extends ConsumerState<RestoreAccessScreen> {
               AgreementBlock(
                 isChecked: _agreed,
                 isError: _errors['agreement'] != null,
-                onChanged: (v) {
-                  setState(() => _agreed = v);
-                  if (v) _clearField('agreement');
+                onChanged: (v) => setState(() => _agreed = v),
+                onOpenPrivacy: () {
+                  final dio = ref.read(dioProvider);
+                  showAgreeDialog(
+                    context,
+                    dio: dio,
+                    docType: AgreeDocType.privacy,
+                  );
                 },
-                onOpenPrivacy: () => _openDoc(_LegalDoc.privacy),
-                onOpenAgreement: () => _openDoc(_LegalDoc.agreement),
+                onOpenAgreement: () {
+                  final dio = ref.read(dioProvider);
+                  showAgreeDialog(
+                    context,
+                    dio: dio,
+                    docType: AgreeDocType.terms,
+                  );
+                },
               ),
 
               const SizedBox(height: 16),

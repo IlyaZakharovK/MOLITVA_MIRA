@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/auth/auth_local_store.dart';
@@ -5,9 +7,8 @@ import '../../data/streams/api_streams_repository.dart';
 import '../../domain/streams/streams_item.dart';
 import '../../domain/streams/stream_status.dart';
 import '../../domain/streams/streams_repository.dart';
-import '../../providers.dart'; // тут должны быть dioProvider и authLocalStoreProvider
+import '../../providers.dart';
 
-// 🔧 если у тебя authLocalStoreProvider называется иначе — подставь своё имя
 final streamsRepositoryProvider = Provider<StreamsRepository>((ref) {
   final dio = ref.watch(dioProvider);
   final local = ref.watch(authLocalStoreProvider);
@@ -84,7 +85,9 @@ StateNotifierProvider.family<StreamsController, StreamsState, StreamsKey>((ref, 
 class StreamsController extends StateNotifier<StreamsState> {
   StreamsController(this.ref, {required this.my, required this.status})
       : super(StreamsState.initial()) {
-    loadInitial();
+    // ВАЖНО: нельзя синхронно менять state при создании провайдера во время build.
+    // Делаем отложенный старт.
+    Future.microtask(loadInitial);
   }
 
   final Ref ref;
@@ -92,9 +95,19 @@ class StreamsController extends StateNotifier<StreamsState> {
   final StreamStatus status;
 
   StreamsRepository get _repo => ref.read(streamsRepositoryProvider);
+  AuthLocalStore get _local => ref.read(authLocalStoreProvider);
 
   Future<void> loadInitial() async {
-    state = state.copyWith(isLoading: true, clearError: true, items: [], from: 1, hasMore: true);
+    if (!mounted) return;
+
+    state = state.copyWith(
+      isLoading: true,
+      clearError: true,
+      items: [],
+      from: 1,
+      hasMore: true,
+    );
+
     try {
       final page = await _repo.fetchStreams(
         status: status,
@@ -106,6 +119,7 @@ class StreamsController extends StateNotifier<StreamsState> {
       final nextFrom = 1 + page.items.length; // offset-логика
       final hasMore = page.items.length < page.total;
 
+      if (!mounted) return;
       state = state.copyWith(
         isLoading: false,
         items: page.items,
@@ -114,14 +128,17 @@ class StreamsController extends StateNotifier<StreamsState> {
         hasMore: hasMore,
       );
     } catch (e) {
+      if (!mounted) return;
       state = state.copyWith(isLoading: false, error: e.toString());
     }
   }
 
   Future<void> loadMore() async {
+    if (!mounted) return;
     if (state.isLoading || state.isLoadingMore || !state.hasMore) return;
 
     state = state.copyWith(isLoadingMore: true, clearError: true);
+
     try {
       final page = await _repo.fetchStreams(
         status: status,
@@ -134,6 +151,7 @@ class StreamsController extends StateNotifier<StreamsState> {
       final nextFrom = state.from + page.items.length;
       final hasMore = merged.length < page.total;
 
+      if (!mounted) return;
       state = state.copyWith(
         isLoadingMore: false,
         items: merged,
@@ -142,9 +160,53 @@ class StreamsController extends StateNotifier<StreamsState> {
         hasMore: hasMore,
       );
     } catch (e) {
+      if (!mounted) return;
       state = state.copyWith(isLoadingMore: false, error: e.toString());
     }
   }
 
   Future<void> refresh() => loadInitial();
+
+  /// ==== API: LIKE ====
+  /// дергаем appLikeTranslation и обновляем likes у нужного StreamItem
+  Future<int?> likeTranslation(String streamId) async {
+    final repo = _repo;
+    if (repo is! ApiStreamsRepository) {
+      throw Exception('StreamsRepository не поддерживает likeTranslation');
+    }
+
+    final userId = await _local.getToken();
+    if (userId == null) throw Exception('Нет user_id: не авторизован');
+
+    final translationId = int.tryParse(streamId);
+    if (translationId == null) throw Exception('Некорректный translation_id: $streamId');
+
+    final res = await repo.likeTranslation(
+      translationId: translationId
+    );
+
+    // обновим локально count
+    final idx = state.items.indexWhere((e) => e.id == streamId);
+    if (idx != -1 && mounted) {
+      final updated = [...state.items];
+      final old = updated[idx];
+      updated[idx] = StreamItem(
+        id: old.id,
+        title: old.title,
+        description: old.description,
+        participants: old.participants,
+        startAt: old.startAt,
+        endAt: old.endAt,
+        status: old.status,
+        status_id: old.status_id,
+        type_id: old.type_id,
+        image: old.image,
+        likes: res.count,
+      );
+
+      state = state.copyWith(items: updated);
+    }
+
+    return res.count;
+  }
 }

@@ -1,6 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../data/prayer_requests/fake_prayer_requests_repository.dart';
 import '../../domain/prayer_requests/prayer_request_item.dart';
 import '../../domain/prayer_requests/prayer_requests_repository.dart';
 import '../../domain/prayer_requests/request_status.dart';

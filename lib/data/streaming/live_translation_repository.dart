@@ -1,0 +1,203 @@
+import 'package:dio/dio.dart';
+
+class LiveTranslation {
+  final int id;
+  final int type;
+  final int statusId;
+  final int ownerId;
+
+  final String name;
+  final String description;
+
+  // SFU fields
+  final int roomId;
+  final String listenerPin;
+  final String speakerPin;
+
+  // TURN
+  final String coturnUser;
+  final String coturnPass;
+
+  // Prayer fields
+  final int prayer_optional;
+  final String prayer_optional_text;
+  final int prayers_category_id;
+  final int prayers_texts_id;
+
+  LiveTranslation({
+    required this.id,
+    required this.type,
+    required this.statusId,
+    required this.ownerId,
+    required this.name,
+    required this.description,
+    required this.roomId,
+    required this.listenerPin,
+    required this.speakerPin,
+    required this.coturnUser,
+    required this.coturnPass,
+    required this.prayer_optional,
+    required this.prayer_optional_text,
+    required this.prayers_category_id,
+    required this.prayers_texts_id,
+  });
+
+  static int _toInt(dynamic v) {
+    if (v is num) return v.toInt();
+    return int.tryParse((v ?? '').toString()) ?? 0;
+  }
+
+  static String _toStr(dynamic v) => (v ?? '').toString();
+
+  factory LiveTranslation.fromApi(Map<String, dynamic> j) {
+    return LiveTranslation(
+      id: _toInt(j['id']),
+      type: _toInt(j['type']),
+      statusId: _toInt(j['status_id']),
+      ownerId: _toInt(j['owner_id']),
+      name: _toStr(j['name']),
+      description: _toStr(j['description']),
+      roomId: _toInt(j['roomID']),
+      listenerPin: _toStr(j['listener_pin']),
+      speakerPin: _toStr(j['speaker_pin']),
+      coturnUser: _toStr(j['coturn_user']),
+      coturnPass: _toStr(j['coturn_pass']),
+      prayer_optional: _toInt(j['prayer_optional']),
+      prayer_optional_text: _toStr(j['prayer_optional_text']),
+      prayers_category_id: _toInt(j['prayers_category_id']),
+      prayers_texts_id: _toInt(j['prayers_texts_id']),
+    );
+  }
+}
+
+/// ===== Presence DTO =====
+
+class OnlineUser {
+  final int id;
+  final String name;
+
+  OnlineUser({required this.id, required this.name});
+
+  static int _toInt(dynamic v) {
+    if (v is num) return v.toInt();
+    return int.tryParse((v ?? '').toString()) ?? 0;
+  }
+
+  static String _toStr(dynamic v) => (v ?? '').toString();
+
+  factory OnlineUser.fromApi(Map<String, dynamic> j) {
+    return OnlineUser(
+      id: _toInt(j['id']),
+      name: _toStr(j['name']),
+    );
+  }
+}
+
+class OnlineInfo {
+  final int countOnline;
+  final List<OnlineUser> users;
+
+  OnlineInfo({required this.countOnline, required this.users});
+
+  static int _toInt(dynamic v) {
+    if (v is num) return v.toInt();
+    return int.tryParse((v ?? '').toString()) ?? 0;
+  }
+
+  factory OnlineInfo.fromApi(Map<String, dynamic> body) {
+    // сервер может вернуть count_online в корне
+    final count = _toInt(body['count_online']);
+
+    final usersRaw = body['users'];
+    final List<OnlineUser> users = [];
+    if (usersRaw is List) {
+      for (final u in usersRaw) {
+        if (u is Map) {
+          users.add(OnlineUser.fromApi(Map<String, dynamic>.from(u)));
+        }
+      }
+    }
+
+    return OnlineInfo(countOnline: count, users: users);
+  }
+}
+
+class LiveTranslationRepository {
+  LiveTranslationRepository(this._dio);
+
+  final Dio _dio;
+
+  static const _type = 'application';
+  static const _pass = 'f92R*#eiDF82W@#k2WO';
+
+  bool _isOkStatus(dynamic status) {
+    final s = (status ?? '').toString().toLowerCase().trim();
+    return s == 'success' || s == 'ok';
+  }
+
+  Future<LiveTranslation> fetchById(int translationId) async {
+    final resp = await _dio.post(
+      '',
+      data: <String, dynamic>{
+        'type': _type,
+        'pass': _pass,
+        'method': 'appGetTranslations',
+        'data': <String, dynamic>{'translation_id': translationId},
+      },
+    );
+
+    final body = resp.data;
+    if (body is! Map) throw Exception('Некорректный ответ сервера');
+
+    final status = body['status'];
+    if (!_isOkStatus(status)) {
+      throw Exception((body['description'] ?? 'Ошибка').toString());
+    }
+
+    final data = body['data'];
+    if (data is! Map) throw Exception('В ответе нет data');
+
+    return LiveTranslation.fromApi(Map<String, dynamic>.from(data));
+  }
+
+  /// ✅ Опрос присутствия на трансляции (каждые 15 сек)
+  /// method: appUserOnlineInTranslation
+  Future<OnlineInfo> appUserOnlineInTranslation({
+    required int translationId,
+    required int userId,
+  }) async {
+    final resp = await _dio.post(
+      '',
+      data: <String, dynamic>{
+        'type': _type,
+        'pass': _pass,
+        'method': 'appUserOnlineInTranslation',
+        'data': <String, dynamic>{
+          'translation_id': translationId,
+          'user_id': userId,
+        },
+      },
+    );
+
+    final body = resp.data;
+    if (body is! Map) throw Exception('Некорректный ответ сервера');
+    print(body);
+
+    final status = body['status'];
+    if (!_isOkStatus(status)) {
+      throw Exception((body['description'] ?? 'Ошибка').toString());
+    }
+
+    // Ответ у тебя приходит в корне: count_online/users — не в data
+    // Но на всякий случай поддержим оба варианта
+    final root = Map<String, dynamic>.from(body);
+    final data = body['data'];
+    if (data is Map) {
+      // иногда сервер может класть внутрь data
+      final merged = <String, dynamic>{...root, ...Map<String, dynamic>.from(data)};
+      return OnlineInfo.fromApi(merged);
+    }
+
+    return OnlineInfo.fromApi(root);
+  }
+}

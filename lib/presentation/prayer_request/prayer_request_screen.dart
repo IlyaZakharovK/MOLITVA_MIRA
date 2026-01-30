@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/cupertino.dart';
 
+import '../../domain/streams/stream_status.dart';
 import '../shell/app_shell.dart';
-import '../../domain/prayer_request/prayer_request_mode.dart';
+import '../streams/streams_screen.dart';
 import '../widgets/app_message_bar.dart';
 import '../widgets/top_bar.dart';
 import 'prayer_request_controller.dart';
@@ -20,12 +21,93 @@ class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
 
   final _nameCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
+  final _selfPrayText = TextEditingController();
 
-  bool _open = true;
-  bool _family = false;
+  int _translationType = 1; // 1-open, 2-closed, 3-family, 4-sos (но sos берём из mode)
   DateTime? _dateTime;
 
-  final _selfPrayText = TextEditingController();
+  bool _isSos = false;
+
+  final Map<String, String?> _errors = {};
+
+  static const _kName = 'name';
+  static const _kDesc = 'desc';
+  static const _kDateTime = 'datetime';
+  static const _kCategory = 'category';
+  static const _kPrayer = 'prayer';
+  static const _kSelfText = 'selfText';
+
+  void _setError(String key, String? message) => _errors[key] = message;
+
+  void _clearField(String key) {
+    if (_errors.containsKey(key)) {
+      setState(() => _errors.remove(key));
+    }
+  }
+
+  bool _validateAndShow(PrayerRequestState st) {
+    _errors.clear();
+
+    final name = _nameCtrl.text.trim();
+    final desc = _descCtrl.text.trim();
+    final selfText = _selfPrayText.text.trim();
+
+    String? firstError;
+
+    if (_isSos) {
+      // ✅ SOS: только описание + категория
+      if (desc.isEmpty) {
+        _setError(_kDesc, 'Введите описание');
+        firstError ??= 'Введите описание';
+      }
+      if (st.categoryId == null) {
+        _setError(_kCategory, 'Выберите категорию');
+        firstError ??= 'Выберите категорию';
+      }
+
+      setState(() {});
+      if (firstError != null) {
+        showAppMessageBar(context, firstError);
+        return false;
+      }
+      return true;
+    }
+
+    // ✅ NORMAL: как было
+    if (name.isEmpty) {
+      _setError(_kName, 'Введите название');
+      firstError ??= 'Введите название';
+    }
+
+    if (_dateTime == null) {
+      _setError(_kDateTime, 'Выберите дату и время');
+      firstError ??= 'Выберите дату и время';
+    }
+
+    if (st.selfPray) {
+      if (selfText.isEmpty) {
+        _setError(_kSelfText, 'Введите текст своей молитвы');
+        firstError ??= 'Введите текст своей молитвы';
+      }
+    } else {
+      if (st.categoryId == null) {
+        _setError(_kCategory, 'Выберите категорию');
+        firstError ??= 'Выберите категорию';
+      }
+      if (st.prayerId == null) {
+        _setError(_kPrayer, 'Выберите молитву');
+        firstError ??= 'Выберите молитву';
+      }
+    }
+
+    setState(() {});
+
+    if (firstError != null) {
+      showAppMessageBar(context, firstError);
+      return false;
+    }
+    return true;
+  }
 
   Future<int?> _pickFromSearchSheet({
     required String title,
@@ -95,9 +177,7 @@ class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
                       ),
                     ),
                   ),
-
                   const Divider(height: 1),
-
                   Expanded(
                     child: StatefulBuilder(
                       builder: (ctx, setModalState) {
@@ -141,7 +221,6 @@ class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
     );
   }
 
-
   @override
   void dispose() {
     _nameCtrl.dispose();
@@ -150,6 +229,7 @@ class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
     super.dispose();
   }
 
+  // ✅ вернул / оставил date+time picker (как у тебя)
   Future<void> _pickDateTime() async {
     final now = DateTime.now();
 
@@ -175,7 +255,6 @@ class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
     if (date == null) return;
 
     final initialTime = TimeOfDay.fromDateTime(_dateTime ?? now);
-
     final time = await _pickCupertinoTime(
       context: context,
       initial: initialTime,
@@ -185,6 +264,7 @@ class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
 
     setState(() {
       _dateTime = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+      _clearField(_kDateTime);
     });
   }
 
@@ -253,22 +333,23 @@ class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
     );
   }
 
-  bool _isValidEmail(String email) {
-    final e = email.trim();
-    final re = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
-    return re.hasMatch(e);
-  }
-
   @override
   Widget build(BuildContext context) {
-    final mode = ref.watch(prayerRequestModeProvider);
-    final isSos = mode == PrayerRequestMode.sos;
-
     final st = ref.watch(prayerRequestControllerProvider);
     final ctrl = ref.read(prayerRequestControllerProvider.notifier);
 
-    // Сообщение об ошибке — единообразно, над полями
-    final error = st.errorMessage;
+    // ошибки из controller → showAppMessageBar
+    ref.listen(
+      prayerRequestControllerProvider.select((s) => s.errorMessage),
+          (prev, next) {
+        if (!context.mounted) return;
+        if (next != null && next.isNotEmpty && next != prev) {
+          showAppMessageBar(context, next);
+        }
+      },
+    );
+
+    final sosColor = const Color(0xFFFF6B6B);
 
     return AppShell(
       child: SafeArea(
@@ -280,42 +361,46 @@ class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
                 children: [
-                  if (error != null) ...[
-                    _Card(
-                      child: Text(
-                        error,
-                        style: const TextStyle(color: Color(0xFFFF6A00), fontWeight: FontWeight.w700),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                  ],
-
+                  // ===== SOS =====
                   _Card(
                     child: Column(
                       children: [
                         GestureDetector(
                           onTap: () {
-                            showAppMessageBar(context, 'Находится в разработке');
+                            setState(() {
+                              _isSos = !_isSos;
+                              _errors.clear();
+                            });
+
+                            // В SOS выключаем "свою молитву" (чтобы не ломать выбор категории)
+                            if (_isSos && st.selfPray) {
+                              ctrl.setSelfPray(false);
+                            }
+
+                            showAppMessageBar(
+                              context,
+                              _isSos ? 'SOS режим включён' : 'SOS режим выключен',
+                            );
                           },
                           child: Container(
                             height: 42,
                             decoration: BoxDecoration(
-                              color: isSos ? const Color(0xFFFF6B6B) : Colors.white,
+                              color: _isSos ? sosColor : Colors.white,
                               borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: const Color(0xFFFF6B6B)),
+                              border: Border.all(color: sosColor),
                             ),
                             alignment: Alignment.center,
                             child: Text(
                               'SOS',
                               style: TextStyle(
-                                color: isSos ? Colors.white : const Color(0xFFFF6B6B),
+                                color: _isSos ? Colors.white : sosColor,
                                 fontSize: 14,
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
                           ),
                         ),
-                        if (isSos) ...[
+                        if (_isSos) ...[
                           const SizedBox(height: 12),
                           const Align(
                             alignment: Alignment.centerLeft,
@@ -335,17 +420,49 @@ class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
 
                   const SizedBox(height: 12),
 
-                  if (isSos) ...[
+                  // ===== SOS: ТОЛЬКО 2 ПОЛЯ =====
+                  if (_isSos) ...[
                     _Card(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const _Label('Запрос:'),
-                          _TextArea(controller: _nameCtrl, rows: 8),
+                          const _Label('Описание трансляции'),
+                          _TextArea(
+                            controller: _descCtrl,
+                            rows: 5,
+                            error: _errors[_kDesc],
+                            onChanged: (_) => _clearField(_kDesc),
+                          ),
+                          const SizedBox(height: 12),
+
+                          const _Label('Категория'),
+                          if (st.categoriesLoading)
+                            const Padding(
+                              padding: EdgeInsets.only(top: 6, bottom: 6),
+                              child: LinearProgressIndicator(minHeight: 2),
+                            ),
+                          _InkField(
+                            value: st.categoryId == null
+                                ? '-- Не выбрано --'
+                                : (st.categories.firstWhere((c) => c.id == st.categoryId).name),
+                            enabled: !st.categoriesLoading,
+                            error: _errors[_kCategory],
+                            onTap: () async {
+                              final picked = await _pickFromSearchSheet(
+                                title: 'Выберите категорию',
+                                items: st.categories.map((c) => (c.id, c.name)).toList(),
+                                selectedId: st.categoryId,
+                              );
+                              if (picked == null) return;
+                              await ctrl.selectCategory(picked);
+                              _clearField(_kCategory);
+                            },
+                          ),
                         ],
                       ),
                     ),
                   ] else ...[
+                    // ===== NORMAL UI (как у тебя было) =====
                     _Card(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -354,22 +471,25 @@ class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
                           _TextArea(
                             controller: _nameCtrl,
                             rows: 1,
-                            onChanged: (_) => ctrl.clearError(),
+                            error: _errors[_kName],
+                            onChanged: (_) => _clearField(_kName),
                           ),
                         ],
                       ),
                     ),
+
                     const SizedBox(height: 8),
 
                     _Card(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const _Label('Описание:'),
+                          const _Label('Описание трансляции'),
                           _TextArea(
                             controller: _descCtrl,
                             rows: 5,
-                            onChanged: (_) => ctrl.clearError(),
+                            error: _errors[_kDesc],
+                            onChanged: (_) => _clearField(_kDesc),
                           ),
                         ],
                       ),
@@ -377,25 +497,24 @@ class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
 
                     const SizedBox(height: 12),
 
-                    // ====== БЛОК МОЛИТВ ======
+                    // ===== БЛОК МОЛИТВ =====
                     if (!st.selfPray) ...[
                       _Card(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const _Label('Категория'),
-
                             if (st.categoriesLoading)
                               const Padding(
                                 padding: EdgeInsets.only(top: 6, bottom: 6),
                                 child: LinearProgressIndicator(minHeight: 2),
                               ),
-
                             _InkField(
                               value: st.categoryId == null
-                                  ? '--выберите категорию--'
+                                  ? '-- Не выбрано --'
                                   : (st.categories.firstWhere((c) => c.id == st.categoryId).name),
-                              enabled: !st.selfPray && !st.categoriesLoading,
+                              enabled: !st.categoriesLoading,
+                              error: _errors[_kCategory],
                               onTap: () async {
                                 final picked = await _pickFromSearchSheet(
                                   title: 'Выберите категорию',
@@ -404,10 +523,10 @@ class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
                                 );
                                 if (picked == null) return;
                                 await ctrl.selectCategory(picked);
+                                _clearField(_kCategory);
+                                _clearField(_kPrayer);
                               },
                             ),
-
-                            const SizedBox(height: 12),
 
                             const SizedBox(height: 12),
                             const _Label('Молитва'),
@@ -424,7 +543,8 @@ class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
                                   : (st.prayerId == null
                                   ? '--выберите молитву--'
                                   : (st.prayers.firstWhere((p) => p.id == st.prayerId).name)),
-                              enabled: !st.selfPray && st.categoryId != null && !st.prayersLoading,
+                              enabled: st.categoryId != null && !st.prayersLoading,
+                              error: _errors[_kPrayer],
                               onTap: () async {
                                 if (st.categoryId == null) return;
 
@@ -435,6 +555,7 @@ class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
                                 );
                                 if (picked == null) return;
                                 ctrl.selectPrayer(picked);
+                                _clearField(_kPrayer);
                               },
                             ),
 
@@ -442,7 +563,10 @@ class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
                               children: [
                                 Checkbox(
                                   value: st.selfPray,
-                                  onChanged: (v) => ctrl.setSelfPray(v ?? false),
+                                  onChanged: (v) {
+                                    ctrl.setSelfPray(v ?? false);
+                                    if (!(v ?? false)) _clearField(_kSelfText);
+                                  },
                                   activeColor: Colors.black87,
                                 ),
                                 const Text(
@@ -483,8 +607,6 @@ class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
                                 ),
                               ),
                             ),
-
-                            const SizedBox(height: 12),
                           ],
                         ),
                       ),
@@ -497,7 +619,8 @@ class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
                             _TextArea(
                               controller: _selfPrayText,
                               rows: 5,
-                              onChanged: (_) => ctrl.clearError(),
+                              error: _errors[_kSelfText],
+                              onChanged: (_) => _clearField(_kSelfText),
                             ),
                             Row(
                               children: [
@@ -523,53 +646,45 @@ class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
 
                     const SizedBox(height: 12),
 
+                    // ✅ Тип/Дата/Семейная молитва — ВЕРНУЛ/ОСТАВИЛ
                     _Card(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          RadioListTile<bool>(
+                          RadioListTile<int>(
                             contentPadding: EdgeInsets.zero,
-                            value: true,
-                            groupValue: _open,
-                            onChanged: (_) => setState(() => _open = true),
+                            value: 1,
+                            groupValue: _translationType,
+                            onChanged: (v) => setState(() => _translationType = v ?? 1),
                             title: const Text('Открытая молитва'),
                             activeColor: Colors.black87,
                           ),
-                          RadioListTile<bool>(
+                          RadioListTile<int>(
                             contentPadding: EdgeInsets.zero,
-                            value: false,
-                            groupValue: _open,
-                            onChanged: (_) => setState(() => _open = false),
+                            value: 2,
+                            groupValue: _translationType,
+                            onChanged: (v) => setState(() => _translationType = v ?? 2),
                             title: const Text('Закрытая молитва'),
+                            activeColor: Colors.black87,
+                          ),
+                          RadioListTile<int>(
+                            contentPadding: EdgeInsets.zero,
+                            value: 3,
+                            groupValue: _translationType,
+                            onChanged: (v) => setState(() => _translationType = v ?? 3),
+                            title: const Text('Семейная молитва'),
                             activeColor: Colors.black87,
                           ),
                           const SizedBox(height: 8),
 
                           _DateTimeField(
                             value: _dateTime,
+                            error: _errors[_kDateTime],
                             onPick: _pickDateTime,
                             onClear: () => setState(() => _dateTime = null),
                           ),
 
                           const SizedBox(height: 10),
-
-                          Row(
-                            children: [
-                              Checkbox(
-                                value: _family,
-                                onChanged: (v) => setState(() => _family = v ?? false),
-                                activeColor: Colors.black87,
-                              ),
-                              const Text(
-                                'Семейная молитва',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.black54,
-                                ),
-                              ),
-                            ],
-                          ),
                         ],
                       ),
                     ),
@@ -590,63 +705,38 @@ class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
                       onPressed: st.isSubmitting
                           ? null
                           : () async {
-                        // SOS пока не делаем
-                        if (isSos) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('SOS находится в разработке')),
-                          );
-                          return;
-                        }
-
-                        final name = _nameCtrl.text.trim();
-                        final desc = _descCtrl.text.trim();
-
-                        if (name.isEmpty) {
-                          ctrl.clearError();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Введите название')),
-                          );
-                          return;
-                        }
-
-                        if (_dateTime == null) {
-                          ctrl.clearError();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Выберите дату и время')),
-                          );
-                          return;
-                        }
-
-                        if (st.selfPray) {
-                          if (_selfPrayText.text.trim().isEmpty) {
-                            ctrl.clearError();
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Введите текст своей молитвы')),
-                            );
-                            return;
-                          }
-                        } else {
-                          if (st.categoryId == null) {
-                            ctrl.clearError();
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Выберите категорию')),
-                            );
-                            return;
-                          }
-                          if (st.prayerId == null) {
-                            ctrl.clearError();
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Выберите молитву')),
-                            );
-                            return;
-                          }
-                        }
+                        if (!_validateAndShow(st)) return;
 
                         try {
+                          if (_isSos) {
+                            await ctrl.submitSos(
+                              description: _descCtrl.text.trim(),
+                              categoryId: st.categoryId!,
+                            );
+
+                            if (!mounted) return;
+
+                            setState(() {
+                              _descCtrl.clear();
+                              _isSos = false;
+                              _errors.clear();
+                            });
+
+                            Navigator.of(context).pushReplacement(
+                                MaterialPageRoute(
+                                  builder: (_) => StreamsScreen(
+                                    my: true,
+                                    initialStatus: StreamStatus.planned,
+                                  ),
+                                ),
+                            );
+                            return;
+                          }
+
                           await ctrl.submitTranslation(
-                            name: name,
-                            description: desc,
-                            type: _open ? 1 : 2,
+                            name: _nameCtrl.text.trim(),
+                            description: _descCtrl.text.trim(),
+                            type: _isSos ? 4 : _translationType,
                             datePlanned: _dateTime!,
                             selfPray: st.selfPray,
                             selfPrayText: _selfPrayText.text.trim(),
@@ -654,23 +744,25 @@ class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
 
                           if (!mounted) return;
 
-                          setState(() {
-                            _nameCtrl.clear();
-                            _descCtrl.clear();
-                            _selfPrayText.clear();
-                            _dateTime = null;
-                            _open = true;
-                            _family = false;
-                          });
+// ✅ решаем, какой таб открыть в "Мои трансляции"
+                          final now = DateTime.now();
+                          final planned = _dateTime!;
+                          final targetStatus =
+                          planned.isAfter(now.add(const Duration(minutes: 1)))
+                              ? StreamStatus.planned
+                              : StreamStatus.active;
 
-                          ref.read(prayerRequestControllerProvider.notifier).setSelfPray(false);
-                          ref.read(prayerRequestControllerProvider.notifier).selectCategory(null);
-
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Трансляция создана')),
+// ✅ перенаправляем в "Мои трансляции" и открываем нужный раздел
+                          Navigator.of(context).pushReplacement(
+                            MaterialPageRoute(
+                              builder: (_) => StreamsScreen(
+                                my: true,
+                                initialStatus: targetStatus,
+                              ),
+                            ),
                           );
                         } catch (_) {
-                          // ошибка уже в state.errorMessage
+                          // ошибки уже покажутся через ref.listen(errorMessage)
                         }
                       },
                       child: st.isSubmitting
@@ -679,7 +771,7 @@ class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
                         height: 18,
                         child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                       )
-                          : const Text('Создать заявку'),
+                          : Text(_isSos ? 'Отправить SOS' : 'Создать заявку'),
                     ),
                   ),
                 ],
@@ -740,15 +832,19 @@ class _TextArea extends StatelessWidget {
   final TextEditingController controller;
   final int rows;
   final ValueChanged<String>? onChanged;
+  final String? error;
 
   const _TextArea({
     required this.controller,
     required this.rows,
     this.onChanged,
+    this.error,
   });
 
   @override
   Widget build(BuildContext context) {
+    final hasError = error != null && error!.isNotEmpty;
+
     return TextField(
       controller: controller,
       onChanged: onChanged,
@@ -761,11 +857,11 @@ class _TextArea extends StatelessWidget {
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Colors.black26),
+          borderSide: BorderSide(color: hasError ? Colors.red : Colors.black26),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Colors.black45),
+          borderSide: BorderSide(color: hasError ? Colors.red : Colors.black45),
         ),
       ),
     );
@@ -776,15 +872,19 @@ class _DateTimeField extends StatelessWidget {
   final DateTime? value;
   final VoidCallback onPick;
   final VoidCallback onClear;
+  final String? error;
 
   const _DateTimeField({
     required this.value,
     required this.onPick,
     required this.onClear,
+    this.error,
   });
 
   @override
   Widget build(BuildContext context) {
+    final hasError = error != null && error!.isNotEmpty;
+
     final text = value == null
         ? 'Выберите дату и время'
         : '${value!.day.toString().padLeft(2, '0')}.${value!.month.toString().padLeft(2, '0')}.${value!.year} '
@@ -799,7 +899,7 @@ class _DateTimeField extends StatelessWidget {
         decoration: BoxDecoration(
           color: const Color(0xFFF6F7F9),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: Colors.black26),
+          border: Border.all(color: hasError ? Colors.red : Colors.black26),
         ),
         child: Row(
           children: [
@@ -831,15 +931,19 @@ class _InkField extends StatelessWidget {
   final String value;
   final bool enabled;
   final VoidCallback onTap;
+  final String? error;
 
   const _InkField({
     required this.value,
     required this.enabled,
     required this.onTap,
+    this.error,
   });
 
   @override
   Widget build(BuildContext context) {
+    final hasError = error != null && error!.isNotEmpty;
+
     return InkWell(
       onTap: enabled ? onTap : null,
       borderRadius: BorderRadius.circular(10),
@@ -850,7 +954,7 @@ class _InkField extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: Colors.black26),
+          border: Border.all(color: hasError ? Colors.red : Colors.black26),
         ),
         alignment: Alignment.centerLeft,
         child: Row(
@@ -873,4 +977,3 @@ class _InkField extends StatelessWidget {
     );
   }
 }
-

@@ -4,13 +4,16 @@ import 'burger_button.dart';
 
 class TopBar extends StatelessWidget {
   final String title;
+  final bool translation;
+  final ctrl;
 
-  const TopBar({required this.title});
+  const TopBar({required this.title, this.translation = false, this.ctrl});
 
   void _go(BuildContext context, String route) {
-    Navigator.of(context).pop();
-    if (ModalRoute.of(context)?.settings.name == route) return;
-    Navigator.of(context).pushReplacementNamed(route);
+    if (translation){
+      ctrl.exit();
+    }
+    Navigator.of(context).popAndPushNamed(route);
   }
 
   @override

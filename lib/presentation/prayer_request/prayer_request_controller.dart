@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../data/auth/auth_local_store.dart';
 import '../../domain/prayer_request/prayer_category.dart';
 import '../../domain/prayer_request/prayer_text.dart';
 import '../../domain/prayer_request/prayer_request_repository.dart';
@@ -70,10 +71,8 @@ class PrayerRequestState {
     List<PrayerCategory>? categories,
     bool? prayersLoading,
     List<PrayerText>? prayers,
-
     Object? categoryId = _keep,
     Object? prayerId = _keep,
-
     String? prayerText,
     bool? selfPray,
     String? errorMessage,
@@ -81,8 +80,7 @@ class PrayerRequestState {
   }) {
     final nextCategoryId =
     categoryId == _keep ? this.categoryId : categoryId as int?;
-    final nextPrayerId =
-    prayerId == _keep ? this.prayerId : prayerId as int?;
+    final nextPrayerId = prayerId == _keep ? this.prayerId : prayerId as int?;
 
     return PrayerRequestState(
       isSubmitting: isSubmitting ?? this.isSubmitting,
@@ -97,7 +95,6 @@ class PrayerRequestState {
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
     );
   }
-
 }
 
 class PrayerRequestController extends StateNotifier<PrayerRequestState> {
@@ -105,15 +102,16 @@ class PrayerRequestController extends StateNotifier<PrayerRequestState> {
     loadCategories();
   }
 
+  final Ref ref;
+
+  PrayerRequestRepository get _repo => ref.read(prayerRequestRepositoryProvider);
+  AuthLocalStore get _local => ref.read(authLocalStoreProvider);
+
   int? _asInt(dynamic v) {
     if (v == null) return null;
     if (v is int) return v;
     return int.tryParse(v.toString());
   }
-
-  final Ref ref;
-
-  PrayerRequestRepository get _repo => ref.read(prayerRequestRepositoryProvider);
 
   void clearError() {
     state = state.copyWith(clearError: true);
@@ -155,7 +153,6 @@ class PrayerRequestController extends StateNotifier<PrayerRequestState> {
     await _loadPrayers(id);
   }
 
-
   Future<void> _loadPrayers(int categoryId) async {
     state = state.copyWith(prayersLoading: true, clearError: true);
     try {
@@ -192,7 +189,6 @@ class PrayerRequestController extends StateNotifier<PrayerRequestState> {
       clearError: true,
     );
   }
-
 
   void setSelfPray(bool value) {
     if (value) {
@@ -237,6 +233,35 @@ class PrayerRequestController extends StateNotifier<PrayerRequestState> {
         prayersTextId: selfPray ? null : state.prayerId,
         prayerOptional: selfPray,
         prayerOptionalText: selfPray ? selfPrayText : '',
+      );
+
+      state = state.copyWith(isSubmitting: false);
+    } catch (e) {
+      state = state.copyWith(isSubmitting: false, errorMessage: e.toString());
+      rethrow;
+    }
+  }
+
+  /// ✅ SOS: пользователь вводит только description + category
+  /// (остальные обязательные поля заполняем технически, чтобы API не падал)
+  Future<void> submitSos({
+    required String description,
+    required int categoryId,
+  }) async {
+    state = state.copyWith(isSubmitting: true, clearError: true);
+    try {
+      // В SOS отправляем только то, что вводит пользователь:
+      // description + category.
+      // Но если API appCreateTranslation требует name/type/date — даём дефолты.
+      await _repo.createTranslation(
+        name: 'SOS',
+        description: description,
+        type: 4,
+        datePlanned: DateTime.now(),
+        prayersCategoryId: categoryId,
+        prayersTextId: 0,
+        prayerOptional: false,
+        prayerOptionalText: '',
       );
 
       state = state.copyWith(isSubmitting: false);

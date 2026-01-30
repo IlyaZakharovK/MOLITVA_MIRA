@@ -106,7 +106,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
                           _RoleChip(
                             role: role,
-                            onTap: () {}, // роль приходит с сервера, не меняем из UI
                           ),
 
                           const SizedBox(height: 16),
@@ -114,6 +113,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           if (role == ProfileRole.layman || role == ProfileRole.admin) ...[
                             _Label('Имя'),
                             _Input(controller: _fullNameCtrl),
+                            const SizedBox(height: 10),
+
+                            _Label('Email'),
+                            _Input(controller: _emailCtrl),
                             const SizedBox(height: 10),
 
                             _Label('Ваш телефон'),
@@ -278,29 +281,24 @@ class _ErrorState extends StatelessWidget {
 
 class _RoleChip extends StatelessWidget {
   final ProfileRole role;
-  final VoidCallback onTap;
 
-  const _RoleChip({required this.role, required this.onTap});
+  const _RoleChip({required this.role,});
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(6),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: const Color(0xFF3F4F86), width: 1),
-        ),
-        child: Text(
-          role.label,
-          style: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: Colors.black54,
-          ),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: const Color(0xFF3F4F86), width: 1),
+      ),
+      child: Text(
+        role.label,
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: Colors.black54,
         ),
       ),
     );
