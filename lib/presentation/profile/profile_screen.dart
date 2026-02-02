@@ -24,10 +24,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   final _rectorNameCtrl = TextEditingController();
   final _rectorPhoneCtrl = TextEditingController();
 
-  // Пока не подключили getDioceses -> храним строку.
-  // На API сейчас приходит dioceses_id, но отображаем как строку.
   String _eparchy = '';
-
   bool _filledOnce = false;
 
   @override
@@ -78,8 +75,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 data: (profile) {
                   if (!_filledOnce) _fill(profile);
 
-                  // Админ отображается как обычный профиль (как мирянин),
-                  // чтобы UI не ломался.
                   final role = profile.role;
 
                   return SingleChildScrollView(
@@ -94,12 +89,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
                           const SizedBox(height: 16),
 
-                          // По ТЗ: e-mail всегда первым и неактивным.
+                          // По ТЗ: e-mail самым первым и неактивным.
                           _Label('Email'),
                           _Input(
                             controller: _emailCtrl,
-                            enabled: false,
                             keyboardType: TextInputType.emailAddress,
+                            enabled: false,
                           ),
                           const SizedBox(height: 10),
 
@@ -112,14 +107,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             _Label('Ваш телефон'),
                             _Input(
                               controller: _phoneCtrl,
-                              enabled: false,
                               keyboardType: TextInputType.phone,
+                              enabled: false,
                             ),
                           ] else if (role == ProfileRole.temple) ...[
                             _Label('Епархия'),
                             _ReadOnlyField(
-                              value: _eparchy.isEmpty ? 'Не указана' : _eparchy,
                               enabled: false,
+                              value: _eparchy.isEmpty ? 'Не указана' : _eparchy,
                               onTap: () {},
                             ),
                             const SizedBox(height: 10),
@@ -131,8 +126,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             _Label('Телефон настоятеля'),
                             _Input(
                               controller: _rectorPhoneCtrl,
-                              enabled: false,
                               keyboardType: TextInputType.phone,
+                              enabled: false,
                             ),
                             const SizedBox(height: 10),
 
@@ -159,8 +154,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
                             _Label('Епархия'),
                             _ReadOnlyField(
-                              value: _eparchy.isEmpty ? 'Не указана' : _eparchy,
                               enabled: false,
+                              value: _eparchy.isEmpty ? 'Не указана' : _eparchy,
                               onTap: () {},
                             ),
                             const SizedBox(height: 10),
@@ -172,8 +167,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             _Label('Телефон настоятеля'),
                             _Input(
                               controller: _rectorPhoneCtrl,
-                              enabled: false,
                               keyboardType: TextInputType.phone,
+                              enabled: false,
                             ),
                             const SizedBox(height: 10),
                           ],
@@ -286,11 +281,19 @@ class _Input extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return TextField(
+    final field = TextField(
       controller: controller,
       keyboardType: keyboardType,
-      enabled: enabled,
-      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+      // Неактивно для ввода, но текст остаётся чёрным и читаемым.
+      readOnly: !enabled,
+      enabled: true,
+      showCursor: enabled,
+      enableInteractiveSelection: enabled,
+      style: const TextStyle(
+        fontSize: 13,
+        fontWeight: FontWeight.w500,
+        color: Colors.black87,
+      ),
       decoration: InputDecoration(
         isDense: true,
         filled: true,
@@ -300,16 +303,16 @@ class _Input extends StatelessWidget {
           borderRadius: BorderRadius.circular(8),
           borderSide: const BorderSide(color: Colors.black26),
         ),
-        disabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: Colors.black12),
-        ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide: const BorderSide(color: Colors.black45),
         ),
       ),
     );
+
+    // Полностью гасим интерактивность: нет фокуса/клавиатуры/копирования.
+    if (!enabled) return IgnorePointer(child: field);
+    return field;
   }
 }
 
