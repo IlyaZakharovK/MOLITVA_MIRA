@@ -56,19 +56,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     _filledOnce = true;
   }
 
-  ProfileModel _collect(ProfileModel base) {
-    return base.copyWith(
-      fullName: _fullNameCtrl.text.trim(),
-      email: _emailCtrl.text.trim(),
-      phone: _phoneCtrl.text.trim(),
-      templeName: _templeNameCtrl.text.trim(),
-      eparchy: _eparchy.trim(),
-      address: _addressCtrl.text.trim(),
-      rectorName: _rectorNameCtrl.text.trim(),
-      rectorPhone: _rectorPhoneCtrl.text.trim(),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final async = ref.watch(profileControllerProvider);
@@ -78,7 +65,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         child: Column(
           children: [
             const TopBar(title: 'Мой профиль'),
-
             Expanded(
               child: async.when(
                 loading: () => const Center(child: CircularProgressIndicator()),
@@ -104,134 +90,93 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         children: [
                           const SizedBox(height: 10),
 
-                          _RoleChip(
-                            role: role,
-                          ),
+                          _RoleChip(role: role),
 
                           const SizedBox(height: 16),
 
-                          if (role == ProfileRole.layman || role == ProfileRole.admin) ...[
-                            _Label('Имя'),
-                            _Input(controller: _fullNameCtrl),
-                            const SizedBox(height: 10),
+                          // По ТЗ: e-mail всегда первым и неактивным.
+                          _Label('Email'),
+                          _Input(
+                            controller: _emailCtrl,
+                            enabled: false,
+                            keyboardType: TextInputType.emailAddress,
+                          ),
+                          const SizedBox(height: 10),
 
-                            _Label('Email'),
-                            _Input(controller: _emailCtrl),
+                          if (role == ProfileRole.layman ||
+                              role == ProfileRole.admin) ...[
+                            _Label('Имя'),
+                            _Input(controller: _fullNameCtrl, enabled: false),
                             const SizedBox(height: 10),
 
                             _Label('Ваш телефон'),
                             _Input(
                               controller: _phoneCtrl,
+                              enabled: false,
                               keyboardType: TextInputType.phone,
                             ),
                           ] else if (role == ProfileRole.temple) ...[
                             _Label('Епархия'),
                             _ReadOnlyField(
                               value: _eparchy.isEmpty ? 'Не указана' : _eparchy,
-                              onTap: () {
-                                // позже подключим getDioceses + поиск.
-                                // сейчас просто read-only.
-                              },
-                            ),
-                            const SizedBox(height: 10),
-
-                            _Label('Адрес Храма/Монастыря'),
-                            _Input(controller: _addressCtrl),
-                            const SizedBox(height: 10),
-
-                            _Label('Телефон настоятеля'),
-                            _Input(
-                              controller: _rectorPhoneCtrl,
-                              keyboardType: TextInputType.phone,
-                            ),
-                            const SizedBox(height: 10),
-
-                            _Label('Название Храма/Монастыря'),
-                            _Input(controller: _templeNameCtrl),
-                            const SizedBox(height: 10),
-
-                            _Label('Имя настоятеля'),
-                            _Input(controller: _rectorNameCtrl),
-                            const SizedBox(height: 10),
-                          ] else ...[
-                            // clergy
-                            _Label('Имя'),
-                            _Input(controller: _fullNameCtrl),
-                            const SizedBox(height: 10),
-
-                            _Label('Название Храма/Монастыря'),
-                            _Input(controller: _templeNameCtrl),
-                            const SizedBox(height: 10),
-
-                            _Label('Имя настоятеля'),
-                            _Input(controller: _rectorNameCtrl),
-                            const SizedBox(height: 10),
-
-                            _Label('Епархия'),
-                            _ReadOnlyField(
-                              value: _eparchy.isEmpty ? 'Не указана' : _eparchy,
+                              enabled: false,
                               onTap: () {},
                             ),
                             const SizedBox(height: 10),
 
                             _Label('Адрес Храма/Монастыря'),
-                            _Input(controller: _addressCtrl),
+                            _Input(controller: _addressCtrl, enabled: false),
                             const SizedBox(height: 10),
 
                             _Label('Телефон настоятеля'),
                             _Input(
                               controller: _rectorPhoneCtrl,
+                              enabled: false,
+                              keyboardType: TextInputType.phone,
+                            ),
+                            const SizedBox(height: 10),
+
+                            _Label('Название Храма/Монастыря'),
+                            _Input(controller: _templeNameCtrl, enabled: false),
+                            const SizedBox(height: 10),
+
+                            _Label('Имя настоятеля'),
+                            _Input(controller: _rectorNameCtrl, enabled: false),
+                            const SizedBox(height: 10),
+                          ] else ...[
+                            // clergy
+                            _Label('Имя'),
+                            _Input(controller: _fullNameCtrl, enabled: false),
+                            const SizedBox(height: 10),
+
+                            _Label('Название Храма/Монастыря'),
+                            _Input(controller: _templeNameCtrl, enabled: false),
+                            const SizedBox(height: 10),
+
+                            _Label('Имя настоятеля'),
+                            _Input(controller: _rectorNameCtrl, enabled: false),
+                            const SizedBox(height: 10),
+
+                            _Label('Епархия'),
+                            _ReadOnlyField(
+                              value: _eparchy.isEmpty ? 'Не указана' : _eparchy,
+                              enabled: false,
+                              onTap: () {},
+                            ),
+                            const SizedBox(height: 10),
+
+                            _Label('Адрес Храма/Монастыря'),
+                            _Input(controller: _addressCtrl, enabled: false),
+                            const SizedBox(height: 10),
+
+                            _Label('Телефон настоятеля'),
+                            _Input(
+                              controller: _rectorPhoneCtrl,
+                              enabled: false,
                               keyboardType: TextInputType.phone,
                             ),
                             const SizedBox(height: 10),
                           ],
-
-                          const SizedBox(height: 18),
-
-                          InkWell(
-                            onTap: () {
-                              // TODO: change password flow
-                            },
-                            child: const Text(
-                              'Сменить пароль',
-                              style: TextStyle(
-                                color: Color(0xFFFF6A00),
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-
-                          const SizedBox(height: 34),
-
-                          SizedBox(
-                            width: double.infinity,
-                            height: 44,
-                            child: FilledButton(
-                              style: FilledButton.styleFrom(
-                                backgroundColor: const Color(0xFF3F4F86),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                textStyle: const TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              onPressed: () async {
-                                final updated = _collect(profile);
-                                await ref
-                                    .read(profileControllerProvider.notifier)
-                                    .save(updated);
-
-                                if (!mounted) return;
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('Сохранено')),
-                                );
-                              },
-                              child: const Text('Сохранить'),
-                            ),
-                          ),
 
                           const SizedBox(height: 24),
                         ],
@@ -282,7 +227,7 @@ class _ErrorState extends StatelessWidget {
 class _RoleChip extends StatelessWidget {
   final ProfileRole role;
 
-  const _RoleChip({required this.role,});
+  const _RoleChip({required this.role});
 
   @override
   Widget build(BuildContext context) {
@@ -331,10 +276,12 @@ class _Label extends StatelessWidget {
 class _Input extends StatelessWidget {
   final TextEditingController controller;
   final TextInputType? keyboardType;
+  final bool enabled;
 
   const _Input({
     required this.controller,
     this.keyboardType,
+    this.enabled = true,
   });
 
   @override
@@ -342,15 +289,20 @@ class _Input extends StatelessWidget {
     return TextField(
       controller: controller,
       keyboardType: keyboardType,
+      enabled: enabled,
       style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
       decoration: InputDecoration(
         isDense: true,
         filled: true,
-        fillColor: Colors.white,
+        fillColor: enabled ? Colors.white : const Color(0xFFF2F2F2),
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide: const BorderSide(color: Colors.black26),
+        ),
+        disabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: Colors.black12),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
@@ -364,25 +316,27 @@ class _Input extends StatelessWidget {
 class _ReadOnlyField extends StatelessWidget {
   final String value;
   final VoidCallback onTap;
+  final bool enabled;
 
   const _ReadOnlyField({
     required this.value,
     required this.onTap,
+    this.enabled = true,
   });
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: onTap,
+      onTap: enabled ? onTap : null,
       borderRadius: BorderRadius.circular(8),
       child: Container(
         height: 44,
         width: double.infinity,
         alignment: Alignment.centerLeft,
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: enabled ? Colors.white : const Color(0xFFF2F2F2),
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.black26),
+          border: Border.all(color: enabled ? Colors.black26 : Colors.black12),
         ),
         padding: const EdgeInsets.symmetric(horizontal: 12),
         child: Text(
