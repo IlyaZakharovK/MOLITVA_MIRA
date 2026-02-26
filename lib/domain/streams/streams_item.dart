@@ -12,25 +12,26 @@ class StreamItem {
   /// Короткое описание
   final String description;
 
-  /// Кол-во участников (в API нет — ставим 0)
+  /// Кол-во участников
   final int participants;
 
-  /// Время начала (берем date_planned)
+  /// Время начала (date_planned)
   final DateTime startAt;
 
   final DateTime endAt;
 
-  /// Статус
-  final StreamStatus status;
-
-  /// Статус id
+  /// Статус id (1..4)
   final StreamStatusID status_id;
 
   final String image;
 
-  /// Тип
+  /// Тип (1..4)
   final StreamType type_id;
+
   final int likes;
+
+  /// invite-код (есть только для некоторых типов)
+  final String invite;
 
   const StreamItem({
     required this.id,
@@ -39,7 +40,7 @@ class StreamItem {
     required this.participants,
     required this.startAt,
     required this.endAt,
-    required this.status,
+    required this.invite,
     required this.status_id,
     required this.type_id,
     required this.image,
@@ -47,31 +48,43 @@ class StreamItem {
   });
 
   factory StreamItem.fromApiJson(Map<String, dynamic> json) {
-    final statusStr = (json['status'] ?? '').toString();
-    final st = StreamStatusApiX.fromApi(statusStr);
-    final typeId = (json['type'] as num?)?.toInt() ?? 0;
-    final type = StreamTypeIDApiX.fromApi(typeId);
-    final statusId = (json['status_id'] as num?)?.toInt() ?? 0;
-    final status = StreamStatusIDApiX.fromApi(statusId);
+    String toStr(dynamic v) => (v ?? '').toString();
 
-    DateTime parseDt(String? s) {
-      if (s == null || s.isEmpty) return DateTime.now();
-      final iso = s.replaceFirst(' ', 'T');
+    int toInt(dynamic v, [int def = 0]) {
+      if (v == null) return def;
+      if (v is int) return v;
+      if (v is num) return v.toInt();
+      return int.tryParse(v.toString()) ?? def;
+    }
+
+    DateTime parseDt(dynamic v) {
+      final s = toStr(v).trim();
+      if (s.isEmpty) return DateTime.now();
+      final iso = s.contains('T') ? s : s.replaceFirst(' ', 'T');
       return DateTime.tryParse(iso) ?? DateTime.now();
     }
 
+    final statusStr = toStr(json['status']);
+    final st = StreamStatusApiX.fromApi(statusStr);
+
+    final typeId = toInt(json['type']);
+    final type = StreamTypeIDApiX.fromApi(typeId);
+
+    final statusId = toInt(json['status_id']);
+    final status = StreamStatusIDApiX.fromApi(statusId);
+
     return StreamItem(
-      id: (json['id'] ?? '').toString(),
-      title: (json['name'] ?? '').toString(),
-      description: (json['description'] ?? '').toString(),
-      participants:(json['participants'] ?? 0),
-      startAt: parseDt((json['date_planned'] ?? '').toString()),
-      endAt: parseDt((json['date_end'] ?? '').toString()),
-      status: st,
+      id: toStr(json['id']),
+      title: toStr(json['name']),
+      description: toStr(json['description']),
+      participants: toInt(json['participants']),
+      startAt: parseDt(json['date_planned']),
+      endAt: parseDt(json['date_end']),
       type_id: type,
       status_id: status,
-      image: (json['img'] ?? '').toString(),
-      likes:(json['likes'] ?? 0),
+      image: toStr(json['img']),
+      likes: toInt(json['likes']),
+      invite: toStr(json['invite']).trim(),
     );
   }
 }

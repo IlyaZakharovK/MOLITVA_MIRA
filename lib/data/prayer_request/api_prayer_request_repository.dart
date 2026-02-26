@@ -5,7 +5,6 @@ import '../../domain/prayer_request/prayer_category.dart';
 import '../../domain/prayer_request/prayer_request_repository.dart';
 import '../../domain/prayer_request/prayer_text.dart';
 
-// ApiConfig у тебя уже есть в проекте (используется в ApiClient)
 import '../../api/api_config.dart';
 
 class ApiPrayerRequestRepository implements PrayerRequestRepository {
@@ -32,7 +31,7 @@ class ApiPrayerRequestRepository implements PrayerRequestRepository {
     return body;
   }
 
-  bool _isSuccess(Map<String, dynamic> body) => (body['status'] ?? '') == 'success';
+  bool _isSuccess(Map<String, dynamic> body) => (body['status'] ?? '') == 'success' || (body['status'] ?? '') == 'ok';
   String _desc(Map<String, dynamic> body) => (body['description'] ?? 'Ошибка').toString();
 
   @override
@@ -95,6 +94,9 @@ class ApiPrayerRequestRepository implements PrayerRequestRepository {
     if (!prayerOptional) {
       payload['prayers_category_id'] = prayersCategoryId;
       payload['prayers_texts_id'] = prayersTextId;
+    } else {
+      payload['prayers_category_id'] = 0;
+      payload['prayers_texts_id'] = 0;
     }
 
     final body = await _postRaw('appCreateTranslation', payload);

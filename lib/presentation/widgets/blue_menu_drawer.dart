@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-class BlueMenuDrawer extends StatelessWidget {
+import '../../domain/profile/profile_role.dart';
+import '../profile/profile_controller.dart';
+
+class BlueMenuDrawer extends ConsumerWidget {
   final String? currentRoute;
 
   final VoidCallback onPrayerRequest;
@@ -10,6 +14,7 @@ class BlueMenuDrawer extends StatelessWidget {
   final VoidCallback onMyCommunities;
   final VoidCallback onMyStreams;
   final VoidCallback onProfile;
+  final VoidCallback onModerate;
   final VoidCallback onLogout;
 
   const BlueMenuDrawer({
@@ -22,6 +27,7 @@ class BlueMenuDrawer extends StatelessWidget {
     required this.onMyCommunities,
     required this.onMyStreams,
     required this.onProfile,
+    required this.onModerate,
     required this.onLogout,
   });
 
@@ -33,7 +39,9 @@ class BlueMenuDrawer extends StatelessWidget {
   bool _isActive(String route) => currentRoute == route;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final asProf = ref.watch(profileControllerProvider);
+    final role = asProf.asData?.value.role;
     return Drawer(
       width: MediaQuery.of(context).size.width * 0.78,
       backgroundColor: _bg,
@@ -97,6 +105,21 @@ class BlueMenuDrawer extends StatelessWidget {
                     textColor: _text,
                     textActiveColor: _textActive,
                   ),
+                  if ({
+                    ProfileRole.temple,
+                    ProfileRole.admin,
+                    ProfileRole.clergy,
+                  }.any((p) => p == role)) ...[
+                    _MenuItem(
+                      title: 'Запросы на молитву',
+                      icon: Icons.chat_outlined,
+                      active: _isActive('/moderate'),
+                      onTap: onModerate,
+                      activeColor: _active,
+                      textColor: _text,
+                      textActiveColor: _textActive,
+                    ),
+                  ],
 
                   const SizedBox(height: 10),
                   const Divider(color: Colors.white24, height: 1),

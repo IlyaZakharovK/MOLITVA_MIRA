@@ -3,12 +3,10 @@ import 'profile_role.dart';
 class ProfileModel {
   final ProfileRole role;
 
-  // layman
   final String fullName;
   final String email;
   final String phone;
 
-  // temple/clergy
   final String templeName;
   final String eparchy;
   final String address;

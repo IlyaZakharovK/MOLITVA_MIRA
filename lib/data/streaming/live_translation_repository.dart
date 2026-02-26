@@ -23,6 +23,7 @@ class LiveTranslation {
   final String prayer_optional_text;
   final int prayers_category_id;
   final int prayers_texts_id;
+  final String invite;
 
   LiveTranslation({
     required this.id,
@@ -40,6 +41,7 @@ class LiveTranslation {
     required this.prayer_optional_text,
     required this.prayers_category_id,
     required this.prayers_texts_id,
+    required this.invite,
   });
 
   static int _toInt(dynamic v) {
@@ -66,6 +68,7 @@ class LiveTranslation {
       prayer_optional_text: _toStr(j['prayer_optional_text']),
       prayers_category_id: _toInt(j['prayers_category_id']),
       prayers_texts_id: _toInt(j['prayers_texts_id']),
+      invite: _toStr(j['invite']),
     );
   }
 }
@@ -143,6 +146,32 @@ class LiveTranslationRepository {
         'pass': _pass,
         'method': 'appGetTranslations',
         'data': <String, dynamic>{'translation_id': translationId},
+      },
+    );
+
+    final body = resp.data;
+    print(body['data'][0] is Map);
+    if (body is! Map) throw Exception('Некорректный ответ сервера');
+
+    final status = body['status'];
+    if (!_isOkStatus(status)) {
+      throw Exception((body['description'] ?? 'Ошибка').toString());
+    }
+
+    final data = body['data'][0];
+    if (data is! Map) throw Exception('В ответе нет data by id');
+
+    return LiveTranslation.fromApi(Map<String, dynamic>.from(data));
+  }
+
+  Future<LiveTranslation> fetchByInvite(String invite) async {
+    final resp = await _dio.post(
+      '',
+      data: <String, dynamic>{
+        'type': _type,
+        'pass': _pass,
+        'method': 'appGetTranslationByInvite',
+        'data': <String, dynamic>{'invite': invite},
       },
     );
 

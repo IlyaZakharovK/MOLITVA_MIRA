@@ -44,7 +44,6 @@ class AuthController extends StateNotifier<AuthState> {
     } on AuthFailure catch (e) {
       state = state.copyWith(isLoading: false, errorMessage: e.message);
     } catch (e) {
-      print(e);
       state = state.copyWith(isLoading: false, errorMessage: 'Неизвестная ошибка');
     }
   }
@@ -80,7 +79,6 @@ class AuthController extends StateNotifier<AuthState> {
         nastPhone: nastPhone,
       );
 
-      // регистрация успешна, но нужен код подтверждения
       state = state.copyWith(
         isLoading: false,
         pendingActivationEmail: email,
@@ -95,7 +93,6 @@ class AuthController extends StateNotifier<AuthState> {
 
   Future<void> activateEmail(String code, {required String method}) async {
     final email = state.pendingActivationEmail;
-    print(email);
     if (email == null || email.isEmpty) {
       state = state.copyWith(errorMessage: 'Нет email для подтверждения');
       return;

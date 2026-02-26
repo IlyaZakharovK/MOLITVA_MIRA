@@ -15,12 +15,12 @@ class StreamsScreen extends ConsumerStatefulWidget {
   final bool my;
 
   /// ✅ если задано — при открытии экрана выберем этот таб и перезагрузим данные
-  final StreamStatus? initialStatus;
+  final StreamStatus initialStatus;
 
   const StreamsScreen({
     super.key,
     this.my = false,
-    this.initialStatus,
+    this.initialStatus = StreamStatus.active,
   });
 
   @override
@@ -130,7 +130,7 @@ class _StreamsScreenState extends ConsumerState<StreamsScreen> with RouteAware {
                       return Padding(
                         padding:
                         const EdgeInsets.only(bottom: 16),
-                        child: StreamCard(item: visibleItems[i]),
+                        child: StreamCard(item: visibleItems[i], my: widget.my, status: status),
                       );
                     }
 
@@ -253,21 +253,26 @@ class _TabsRow extends StatelessWidget {
         runSpacing: 8,
         children: [
           _TabChip(
-            text: StreamStatus.active.label,
+            text: StreamStatus.active.label(),
             active: value == StreamStatus.active,
             onTap: () => onChanged(StreamStatus.active),
           ),
           _TabChip(
-            text: StreamStatus.planned.label,
+            text: StreamStatus.planned.label(my: my),
             active: value == StreamStatus.planned,
             onTap: () => onChanged(StreamStatus.planned),
           ),
-          if (my)
+          if (my) ...[
             _TabChip(
-              text: StreamStatus.finished.label,
+              text: StreamStatus.finished.label(),
               active: value == StreamStatus.finished,
               onTap: () => onChanged(StreamStatus.finished),
             ),
+          _TabChip(
+              text: StreamStatus.blocked.label(),
+              active: value == StreamStatus.blocked,
+              onTap: () => onChanged(StreamStatus.blocked)
+          )]
         ],
       ),
     );

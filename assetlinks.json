@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.example.vsem_mirom",
+      "sha256_cert_fingerprints": [
+        "5B:C0:F7:37:65:4B:E9:05:DE:48:14:B1:12:F0:EB:50:E8:2F:1B:CC:66:2B:29:A4:10:42:D4:72:AE:55:7E:B1"
+      ]
+    }
+  }
+]

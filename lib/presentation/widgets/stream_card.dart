@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/streams/api_streams_repository.dart';
@@ -14,13 +15,19 @@ import 'package:vsem_mirom/domain/streams/stream_status.dart';
 import 'package:vsem_mirom/domain/streams/stream_status_id.dart';
 
 final _likedProvider = StateProvider.family<bool, String>((ref, id) => false);
-final _likesCountProvider = StateProvider.family<int?, String>((ref, id) => null);
-final _likeBusyProvider = StateProvider.family<bool, String>((ref, id) => false);
+final _likesCountProvider = StateProvider.family<int?, String>(
+  (ref, id) => null,
+);
+final _likeBusyProvider = StateProvider.family<bool, String>(
+  (ref, id) => false,
+);
 
 class StreamCard extends ConsumerWidget {
   final StreamItem item;
+  final bool my;
+  final StreamStatus status;
 
-  const StreamCard({super.key, required this.item});
+  const StreamCard({super.key, required this.item, required this.my, required this.status});
 
   static const _blue = Color(0xFF2F66FF);
 
@@ -73,8 +80,8 @@ class StreamCard extends ConsumerWidget {
         break;
     }
 
-    if (item.status != StreamStatus.active) {
-      if (item.status == StreamStatus.planned) {
+    if (status != StreamStatus.active) {
+      if (status == StreamStatus.planned) {
         showAppMessageBar(context, 'Трансляция ещё не началась');
       } else {
         showAppMessageBar(context, 'Трансляция завершена');
@@ -84,7 +91,41 @@ class StreamCard extends ConsumerWidget {
 
     Navigator.of(context).pushReplacementNamed(
       '/live_stream',
-      arguments: int.parse(item.id),
+      arguments: {"translationID": item.id, 'invited': false},
+    );
+  }
+
+  Future<void> _onShareInvite(BuildContext context) async {
+    final invite = item.invite.isEmpty ? item.id.toString().trim() : item.invite.toString().trim();
+    debugPrint(invite);
+    if (invite.isEmpty) {
+      showAppMessageBar(
+        context,
+        'Нет кода приглашения',
+        brand: Colors.redAccent,
+      );
+      return;
+    }
+
+    final link = item.invite.isEmpty ?
+    'https://molitvamira.ru/translations/?id=${Uri.encodeComponent(invite)}' :
+    'https://molitvamira.ru/translations/?invite=${Uri.encodeComponent(invite)}';
+    await Clipboard.setData(ClipboardData(text: link));
+
+    await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        title: const Text('Приглашение'),
+        content: const Text('Пригласительная ссылка скопирована в буфер. Теперь Вы можете ее отправить другому участнику.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Закрыть'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -95,12 +136,15 @@ class StreamCard extends ConsumerWidget {
     final likesOverride = ref.watch(_likesCountProvider(item.id));
     final likesCount = likesOverride ?? item.likes;
 
-    final isPlanned = item.status == StreamStatus.planned;
-    final isCompleted = item.status != StreamStatus.active && !isPlanned;
+    final canShareInvite =
+        (status == StreamStatus.active ||
+            status == StreamStatus.planned) && my;
+
+    final isPlanned = status == StreamStatus.planned;
+    final isCompleted = status != StreamStatus.active && !isPlanned;
     final dateToShow = isCompleted ? item.endAt : item.startAt;
 
-    // SOS (тип=4 по API) — особое отображение при модерации.
-    final bool isSos = item.type_id == 4;
+    final bool isSos = item.type_id == StreamType.sos;
     final bool isModeration = item.status_id == StreamStatusID.moderated;
 
     Future<void> onLikeToggle() async {
@@ -146,12 +190,14 @@ class StreamCard extends ConsumerWidget {
     Widget actionPill() {
       // ✅ SOS + модерация: вместо отсчёта показываем "ожидает модерации"
       if (isSos && isModeration && !isCompleted) {
-        return const _WaitingModerationPill();
+        return _WaitingModerationPill();
       }
 
-      if (isPlanned && item.type_id != StreamType.sos) return _CountdownPill(target: item.startAt);
-      if (isPlanned && item.type_id != StreamType.sos) return _CountdownPill(target: item.startAt);
-      if (isPlanned && item.type_id == StreamType.sos) {
+      if (!isSos && status == StreamStatus.planned){
+        return _CountdownPill(target: item.startAt,);
+      }
+
+      if (status == StreamStatus.blocked){
         return Container(
           height: 32,
           padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -161,7 +207,7 @@ class StreamCard extends ConsumerWidget {
             borderRadius: BorderRadius.circular(8),
           ),
           child: const Text(
-            'На модерации',
+            'Заблокирована',
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w800,
@@ -171,15 +217,40 @@ class StreamCard extends ConsumerWidget {
         );
       }
 
-      if (item.status == StreamStatus.active) {
+      if (status == StreamStatus.finished){
+        return Container(
+          height: 32,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          alignment: Alignment.centerLeft,
+          decoration: BoxDecoration(
+            color: const Color(0xFFE9ECEF),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Text(
+            'Завершена',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              color: Colors.black45,
+            ),
+          ),
+        );
+      }
+
+      if (status == StreamStatus.active) {
         return SizedBox(
           height: 32,
           child: FilledButton(
             style: FilledButton.styleFrom(
               backgroundColor: _blue,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
               padding: const EdgeInsets.symmetric(horizontal: 14),
-              textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900),
+              textStyle: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+              ),
             ),
             onPressed: () => _onOpen(context),
             child: const Text('Войти'),
@@ -237,19 +308,19 @@ class StreamCard extends ConsumerWidget {
                     color: const Color(0xFFEDEDED),
                     child: (item.image.isNotEmpty)
                         ? Image.network(
-                      item.image,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => const Icon(
-                        Icons.groups,
-                        size: 40,
-                        color: Colors.black38,
-                      ),
-                    )
+                            item.image,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => const Icon(
+                              Icons.groups,
+                              size: 40,
+                              color: Colors.black38,
+                            ),
+                          )
                         : const Icon(
-                      Icons.groups,
-                      size: 40,
-                      color: Colors.black38,
-                    ),
+                            Icons.groups,
+                            size: 40,
+                            color: Colors.black38,
+                          ),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -269,7 +340,9 @@ class StreamCard extends ConsumerWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        item.description.isEmpty ? 'Без описания' : item.description,
+                        item.description.isEmpty
+                            ? 'Без описания'
+                            : item.description,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
@@ -282,7 +355,8 @@ class StreamCard extends ConsumerWidget {
                       Row(
                         children: [
                           // слева — плашка
-                          if (item.status == StreamStatus.active || item.status == StreamStatus.planned) ...[
+                          if (status == StreamStatus.active ||
+                              status == StreamStatus.planned) ...[
                             Expanded(
                               child: Align(
                                 alignment: Alignment.centerLeft,
@@ -298,15 +372,22 @@ class StreamCard extends ConsumerWidget {
                           ],
 
                           // справа — только для active/planned
-                          if (item.status == StreamStatus.active) ...[
+                          if (status == StreamStatus.active) ...[
                             ConstrainedBox(
                               constraints: const BoxConstraints(minWidth: 52),
                               child: Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    const Icon(Icons.person, size: 18, color: Colors.black26),
+                                    const Icon(
+                                      Icons.person,
+                                      size: 18,
+                                      color: Colors.black26,
+                                    ),
                                     const SizedBox(width: 6),
                                     Text(
                                       item.participants.toString(),
@@ -320,21 +401,30 @@ class StreamCard extends ConsumerWidget {
                                 ),
                               ),
                             ),
-                          ] else if (item.status == StreamStatus.planned) ...[
+                          ] else if (status == StreamStatus.planned) ...[
                             ConstrainedBox(
                               constraints: const BoxConstraints(minWidth: 52),
                               child: InkWell(
                                 borderRadius: BorderRadius.circular(10),
                                 onTap: busy ? null : onLikeToggle,
                                 child: Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 2,
+                                  ),
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       Icon(
-                                        liked ? Icons.volunteer_activism : Icons.volunteer_activism_outlined,
+                                        liked
+                                            ? Icons.volunteer_activism
+                                            : Icons.volunteer_activism_outlined,
                                         size: 18,
-                                        color: busy ? Colors.black26 : (liked ? Colors.orange : Colors.black26),
+                                        color: busy
+                                            ? Colors.black26
+                                            : (liked
+                                                  ? Colors.orange
+                                                  : Colors.black26),
                                       ),
                                       const SizedBox(width: 6),
                                       Text(
@@ -379,14 +469,38 @@ class StreamCard extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(width: 10),
+                if (canShareInvite) ...[
+                  InkWell(
+                    borderRadius: BorderRadius.circular(10),
+                    onTap: () => _onShareInvite(context),
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE9ECEF),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.share,
+                        size: 18,
+                        color: Colors.black54,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                ],
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
                     color: _statusBg(item.status_id),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Text(
-                    item.status_id == StreamStatusID.moderated ? 'На модерации' : item.status_id.label,
+                    item.status_id == StreamStatusID.moderated
+                        ? 'На модерации'
+                        : item.status_id.label,
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w900,
@@ -414,7 +528,7 @@ class _WaitingModerationPill extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12),
       alignment: Alignment.centerLeft,
       decoration: BoxDecoration(
-        color: const Color(0xFFFFC107),
+        color: const Color(0xFFE9ECEF),
         borderRadius: BorderRadius.circular(8),
       ),
       child: const Text(
@@ -422,9 +536,9 @@ class _WaitingModerationPill extends StatelessWidget {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
-          fontSize: 12,
+          fontSize: 11,
           fontWeight: FontWeight.w900,
-          color: Color(0xFF6A4F00),
+          color: Colors.black38,
         ),
       ),
     );
@@ -434,6 +548,7 @@ class _WaitingModerationPill extends StatelessWidget {
 /// countdown pill
 class _CountdownPill extends StatefulWidget {
   final DateTime target;
+
   const _CountdownPill({required this.target});
 
   @override

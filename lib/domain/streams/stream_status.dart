@@ -1,10 +1,11 @@
-enum StreamStatus { active, planned, finished }
+enum StreamStatus { active, planned, finished, blocked }
 
 extension StreamStatusLabel on StreamStatus {
-  String get label => switch (this) {
+  String label({bool my = false}) => switch (this) {
     StreamStatus.active => 'Активные',
-    StreamStatus.planned => 'Запланированные',
+    StreamStatus.planned => my ? 'Запланированные' : 'Предстоящие',
     StreamStatus.finished => 'Завершенные',
+    StreamStatus.blocked => 'Отклоненные',
   };
 }
 
@@ -14,6 +15,7 @@ extension StreamStatusApi on StreamStatus {
     StreamStatus.active => 'active',
     StreamStatus.planned => 'future',
     StreamStatus.finished => 'completed',
+    StreamStatus.blocked => 'declined',
   };
 }
 
@@ -26,6 +28,8 @@ extension StreamStatusApiX on StreamStatus {
         return StreamStatus.planned;
       case 'completed':
         return StreamStatus.finished;
+      case 'declined':
+        return StreamStatus.blocked;
       default:
         return StreamStatus.active;
     }

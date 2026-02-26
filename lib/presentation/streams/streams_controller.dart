@@ -197,11 +197,11 @@ class StreamsController extends StateNotifier<StreamsState> {
         participants: old.participants,
         startAt: old.startAt,
         endAt: old.endAt,
-        status: old.status,
         status_id: old.status_id,
         type_id: old.type_id,
         image: old.image,
         likes: res.count,
+        invite: old.invite
       );
 
       state = state.copyWith(items: updated);

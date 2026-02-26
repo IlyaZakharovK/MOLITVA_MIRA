@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:vsem_mirom/domain/streams/stream_status_id.dart';
 
 import '../../data/auth/auth_local_store.dart';
 import '../../domain/streams/streams_item.dart';
@@ -27,11 +28,9 @@ class OnlineUsersResult {
 }
 
 class ApiStreamsRepository implements StreamsRepository {
-  ApiStreamsRepository({
-    required Dio dio,
-    required AuthLocalStore local,
-  })  : _dio = dio,
-        _local = local;
+  ApiStreamsRepository({required Dio dio, required AuthLocalStore local})
+    : _dio = dio,
+      _local = local;
 
   final Dio _dio;
   final AuthLocalStore _local;
@@ -39,7 +38,10 @@ class ApiStreamsRepository implements StreamsRepository {
   static const _type = 'application';
   static const _pass = 'f92R*#eiDF82W@#k2WO';
 
-  Future<Map<String, dynamic>> _post(String method, Map<String, dynamic> data) async {
+  Future<Map<String, dynamic>> _post(
+    String method,
+    Map<String, dynamic> data,
+  ) async {
     final resp = await _dio.post(
       '',
       data: <String, dynamic>{
@@ -58,18 +60,33 @@ class ApiStreamsRepository implements StreamsRepository {
     );
 
     final body = resp.data;
-    if (body is! Map<String, dynamic>) {
-      throw Exception('Некорректный ответ сервера');
+
+    // ✅ Если трансформер Dio вернул Map<dynamic,dynamic> — приводим ключи к String
+    if (body is Map) {
+      return _stringKeyedMap(body);
     }
-    return body;
+
+    throw Exception('Некорректный ответ сервера');
+  }
+
+  /// ✅ Приводим любые ключи Map к строкам, чтобы не ловить
+  /// "type 'int' is not a subtype of type 'String'".
+  Map<String, dynamic> _stringKeyedMap(Map raw) {
+    final out = <String, dynamic>{};
+    raw.forEach((k, v) => out[k.toString()] = v);
+    return out;
   }
 
   bool _isSuccess(Map<String, dynamic> body) {
     final s = (body['status'] ?? '').toString().toLowerCase().trim();
     return s == 'success' || s == 'ok';
   }
-  String _desc(Map<String, dynamic> body) => (body['description'] ?? 'Ошибка').toString();
-  int _toInt(dynamic v, {int def = 0}) => int.tryParse((v ?? def).toString()) ?? def;
+
+  String _desc(Map<String, dynamic> body) =>
+      (body['description'] ?? 'Ошибка').toString();
+
+  int _toInt(dynamic v, {int def = 0}) =>
+      int.tryParse((v ?? def).toString()) ?? def;
 
   @override
   Future<StreamsPage> fetchStreams({
@@ -101,27 +118,40 @@ class ApiStreamsRepository implements StreamsRepository {
     final list = body['data'];
     final meta = body['meta'];
 
-    final items = (list is List)
-        ? list
-        .whereType<Map>()
-        .map((e) => StreamItem.fromApiJson(Map<String, dynamic>.from(e)))
-        .toList()
+    final parsed = (list is List)
+        ? list.whereType<Map>().map((e) {
+            // ✅ важно: stringify keys, иначе может падать на completed/любом другом
+            final map = _stringKeyedMap(e);
+            return StreamItem.fromApiJson(map);
+          }).toList()
         : <StreamItem>[];
+
+    // ✅ Фильтруем blocked/deleted только для публичной ленты
+    final items = my
+        ? parsed
+        : parsed
+              .where(
+                (e) =>
+                    e.status_id != StreamStatusID.blocked &&
+                    e.status_id != StreamStatusID.deleted,
+              )
+              .toList(growable: false);
+
 
     int total = items.length;
     int mFrom = from;
     int mLimit = limit;
 
     if (meta is Map) {
-      total = _toInt(meta['total'], def: total);
-      mFrom = _toInt(meta['from'], def: from);
-      mLimit = _toInt(meta['limit'], def: limit);
+      final m = _stringKeyedMap(meta);
+      total = _toInt(m['total'], def: total);
+      mFrom = _toInt(m['from'], def: from);
+      mLimit = _toInt(m['limit'], def: limit);
     }
 
     return StreamsPage(items: items, total: total, from: mFrom, limit: mLimit);
   }
 
-  /// appLikeTranslation
   Future<LikeTranslationResult> likeTranslation({
     required int translationId,
   }) async {

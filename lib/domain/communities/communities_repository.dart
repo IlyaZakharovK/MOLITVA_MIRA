@@ -1,6 +1,21 @@
 import 'community_item.dart';
 
 abstract class CommunitiesRepository {
-  Future<List<CommunityItem>> fetchCommunities();
-  Future<void> joinCommunity(String id);
+  Future<List<CommunityItem>> fetchCommunities({
+    required int page,
+    required int limit,
+    required bool my
+  });
+
+  Future<List<CommunityItem>> searchCommunities({required String request});
+
+  Future<bool> createGroup({
+    required int type,
+    required String name,
+    required String description,
+  });
+  Future<bool> subUnSub({
+    required int action,
+    required int groupId
+  });
 }

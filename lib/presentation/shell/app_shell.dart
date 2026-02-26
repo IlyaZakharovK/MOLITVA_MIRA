@@ -91,7 +91,6 @@ class _AppShellState extends ConsumerState<AppShell> {
   }
 
   Future<void> _logout(BuildContext context) async {
-    // Закрыть drawer
     if (Navigator.of(context).canPop()) {
       Navigator.of(context).pop();
     }
@@ -124,6 +123,7 @@ class _AppShellState extends ConsumerState<AppShell> {
         onMyStreams: () => _go(context, '/my_streams'),
         onMyCommunities: () => _go(context, '/my_communities'),
         onProfile: () => _go(context, '/profile'),
+        onModerate: () => _go(context, '/moderate'),
         onLogout: () => _logout(context),
       ),
       body: widget.child,
