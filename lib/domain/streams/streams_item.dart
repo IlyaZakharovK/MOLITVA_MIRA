@@ -82,7 +82,7 @@ class StreamItem {
       endAt: parseDt(json['date_end']),
       type_id: type,
       status_id: status,
-      image: toStr(json['img']),
+      image: toStr(json['logo_url']),
       likes: toInt(json['likes']),
       invite: toStr(json['invite']).trim(),
     );

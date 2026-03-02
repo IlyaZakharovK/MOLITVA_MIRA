@@ -6,11 +6,9 @@ import '../../domain/profile/profile_repository.dart';
 import '../../domain/profile/profile_role.dart';
 
 class ApiProfileRepository implements ProfileRepository {
-  ApiProfileRepository({
-    required Dio dio,
-    required AuthLocalStore local,
-  })  : _dio = dio,
-        _local = local;
+  ApiProfileRepository({required Dio dio, required AuthLocalStore local})
+    : _dio = dio,
+      _local = local;
 
   final Dio _dio;
   final AuthLocalStore _local;
@@ -18,7 +16,10 @@ class ApiProfileRepository implements ProfileRepository {
   static const _type = 'application';
   static const _pass = 'f92R*#eiDF82W@#k2WO';
 
-  Future<Map<String, dynamic>> _post(String method, Map<String, dynamic> data) async {
+  Future<Map<String, dynamic>> _post(
+    String method,
+    Map<String, dynamic> data,
+  ) async {
     final resp = await _dio.post(
       '',
       data: <String, dynamic>{
@@ -43,7 +44,9 @@ class ApiProfileRepository implements ProfileRepository {
       (body['description'] ?? '').toString();
 
   ProfileRole _mapRole(dynamic typeId) {
-    final id = (typeId is int) ? typeId : int.tryParse(typeId?.toString() ?? '') ?? 1;
+    final id = (typeId is int)
+        ? typeId
+        : int.tryParse(typeId?.toString() ?? '') ?? 1;
     return switch (id) {
       1 => ProfileRole.layman,
       2 => ProfileRole.clergy,
@@ -94,6 +97,7 @@ class ApiProfileRepository implements ProfileRepository {
       rectorName: (data['nast_name'] ?? '').toString(),
       rectorPhone: _numToPhone(data['nast_phone']),
       eparchy: diocesesStr,
+      avatarUrl: (data['avatarUrl'] ?? '').toString(),
     );
   }
 

@@ -96,7 +96,7 @@ class Comment {
     final userName = toStr(json['user_name']);
     final message = toStr(json['message']);
     final dateAdd = parseDt(json['date_add']);
-    final userAvatar = toStr(json['user_avatar']);
+    final userAvatar = toStr(json['user_avatar_url']);
 
     return Comment(
       id: id,

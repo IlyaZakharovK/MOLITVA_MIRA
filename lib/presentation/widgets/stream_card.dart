@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/streams/api_streams_repository.dart';
 import '../../domain/streams/stream_type.dart';
 import '../../domain/streams/streams_item.dart';
+import '../../helper/image_helper.dart';
 import '../streams/streams_controller.dart';
 
 import 'app_message_bar.dart';
@@ -16,11 +17,13 @@ import 'package:vsem_mirom/domain/streams/stream_status_id.dart';
 
 final _likedProvider = StateProvider.family<bool, String>((ref, id) => false);
 final _likesCountProvider = StateProvider.family<int?, String>(
-  (ref, id) => null,
+      (ref, id) => null,
 );
 final _likeBusyProvider = StateProvider.family<bool, String>(
-  (ref, id) => false,
+      (ref, id) => false,
 );
+
+final _avatarBusyProvider = StateProvider.family<bool, String>((ref, id) => false);
 
 class StreamCard extends ConsumerWidget {
   final StreamItem item;
@@ -187,6 +190,97 @@ class StreamCard extends ConsumerWidget {
       }
     }
 
+
+    final avatarBusy = ref.watch(_avatarBusyProvider(item.id));
+    final canEditAvatar = my && (status == StreamStatus.active || status == StreamStatus.planned);
+
+
+    Future<void> onChangeAvatar() async {
+      if (!canEditAvatar) return;
+      if (avatarBusy) return;
+
+      final confirmed = await showModalBottomSheet<bool>(
+        context: context,
+        backgroundColor: Colors.white,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        builder: (ctx) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Сменить аватарку трансляции?',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Вы хотите выбрать новое изображение для этой трансляции?',
+                  style: TextStyle(
+                    color: Colors.black54,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(ctx).pop(false),
+                        child: const Text('Нет'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: () => Navigator.of(ctx).pop(true),
+                        child: const Text('Да'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      if (confirmed != true) return;
+
+      final bytes = await pickImageBytes(context);
+      if (bytes == null) return;
+
+      ref.read(_avatarBusyProvider(item.id).notifier).state = true;
+      try {
+        final key = (my: my, status: status);
+        final ctrl = ref.read(streamsControllerProvider(key).notifier);
+
+        final res =
+        await ctrl.uploadStreamAvatar(streamId: item.id, bytes: bytes);
+
+        final statusText = (res['status'] ?? '').toString();
+        final desc = (res['description'] ?? '').toString();
+
+        showAppMessageBar(
+          context,
+          statusText.isEmpty
+              ? 'Аватар трансляции обновлён'
+              : desc,
+          brand: Colors.greenAccent
+        );
+      } catch (e) {
+        showAppMessageBar(
+          context,
+          'Ошибка загрузки: $e',
+          brand: Colors.redAccent,
+        );
+      } finally {
+        ref.read(_avatarBusyProvider(item.id).notifier).state = false;
+      }
+    }
     Widget actionPill() {
       // ✅ SOS + модерация: вместо отсчёта показываем "ожидает модерации"
       if (isSos && isModeration && !isCompleted) {
@@ -302,28 +396,69 @@ class StreamCard extends ConsumerWidget {
               children: [
                 ClipRRect(
                   borderRadius: BorderRadius.circular(10),
-                  child: Container(
-                    width: 64,
-                    height: 64,
+                  child: Material(
                     color: const Color(0xFFEDEDED),
-                    child: (item.image.isNotEmpty)
-                        ? Image.network(
-                            item.image,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => const Icon(
-                              Icons.groups,
-                              size: 40,
-                              color: Colors.black38,
-                            ),
-                          )
-                        : const Icon(
-                            Icons.groups,
-                            size: 40,
-                            color: Colors.black38,
-                          ),
+                    child: InkWell(
+                      onTap: canEditAvatar ? onChangeAvatar : null,
+                      child: SizedBox(
+                        width: 64,
+                        height: 64,
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            if (item.image.isNotEmpty)
+                              Image.network(
+                                item.image,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => const Icon(
+                                  Icons.groups,
+                                  size: 40,
+                                  color: Colors.black38,
+                                ),
+                              )
+                            else
+                              const Icon(
+                                Icons.groups,
+                                size: 40,
+                                color: Colors.black38,
+                              ),
+                            if (canEditAvatar)
+                              Positioned(
+                                top: 6,
+                                right: 6,
+                                child: Container(
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xB3000000),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  padding: const EdgeInsets.all(6),
+                                  child: avatarBusy
+                                      ? const SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor:
+                                      AlwaysStoppedAnimation<Color>(
+                                        Colors.white,
+                                      ),
+                                    ),
+                                  )
+                                      : const Icon(
+                                    Icons.photo_camera,
+                                    size: 14,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 12),
+
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -423,8 +558,8 @@ class StreamCard extends ConsumerWidget {
                                         color: busy
                                             ? Colors.black26
                                             : (liked
-                                                  ? Colors.orange
-                                                  : Colors.black26),
+                                            ? Colors.orange
+                                            : Colors.black26),
                                       ),
                                       const SizedBox(width: 6),
                                       Text(

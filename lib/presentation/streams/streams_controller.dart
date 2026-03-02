@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/auth/auth_local_store.dart';
+import '../../data/upload/upload_repository.dart';
 import '../../data/streams/api_streams_repository.dart';
 import '../../domain/streams/streams_item.dart';
 import '../../domain/streams/stream_status.dart';
@@ -97,6 +99,8 @@ class StreamsController extends StateNotifier<StreamsState> {
   StreamsRepository get _repo => ref.read(streamsRepositoryProvider);
   AuthLocalStore get _local => ref.read(authLocalStoreProvider);
 
+  UploadRepository get _upload => ref.read(uploadRepositoryProvider);
+
   Future<void> loadInitial() async {
     if (!mounted) return;
 
@@ -182,7 +186,7 @@ class StreamsController extends StateNotifier<StreamsState> {
     if (translationId == null) throw Exception('Некорректный translation_id: $streamId');
 
     final res = await repo.likeTranslation(
-      translationId: translationId
+        translationId: translationId
     );
 
     // обновим локально count
@@ -190,6 +194,85 @@ class StreamsController extends StateNotifier<StreamsState> {
     if (idx != -1 && mounted) {
       final updated = [...state.items];
       final old = updated[idx];
+      updated[idx] = StreamItem(
+          id: old.id,
+          title: old.title,
+          description: old.description,
+          participants: old.participants,
+          startAt: old.startAt,
+          endAt: old.endAt,
+          status_id: old.status_id,
+          type_id: old.type_id,
+          image: old.image,
+          likes: res.count,
+          invite: old.invite
+      );
+
+      state = state.copyWith(items: updated);
+    }
+
+    return res.count;
+  }
+
+
+  /// ==== API: UPLOAD STREAM AVATAR ====
+  /// appUploadImg: type=3 (аватар/картинка трансляции), imgId = translation_id
+  /// После успешной загрузки обновляем локально `image` у нужного StreamItem,
+  /// добавляя cache-bust query параметр `v=...`, чтобы картинка обновилась сразу.
+  Future<Map<String, dynamic>> uploadStreamAvatar({
+    required String streamId,
+    required Uint8List bytes,
+  }) async {
+    final translationId = int.tryParse(streamId);
+    if (translationId == null || translationId == 0) {
+      throw Exception('Некорректный translation_id: $streamId');
+    }
+
+    final res = await _upload.uploadImageBase64(
+      type: 3,
+      imgId: translationId,
+      bytes: bytes,
+    );
+
+    final bust = DateTime.now().millisecondsSinceEpoch;
+
+    String? extractedUrl;
+    try {
+      // часто бэк кладёт ссылку в разные ключи
+      dynamic v = res['img'] ?? res['url'] ?? res['link'] ?? res['path'];
+      if (v is String && v.trim().isNotEmpty) extractedUrl = v.trim();
+
+      if (extractedUrl == null && res['data'] is Map) {
+        final data = res['data'] as Map;
+        final vv = data['img'] ?? data['url'] ?? data['link'] ?? data['path'];
+        if (vv is String && vv.trim().isNotEmpty) extractedUrl = vv.trim();
+      }
+    } catch (_) {}
+
+    String withBust(String url) {
+      final raw = url.trim();
+      if (raw.isEmpty) return raw;
+
+      final uri = Uri.tryParse(raw);
+      if (uri == null) {
+        final sep = raw.contains('?') ? '&' : '?';
+        return '$raw${sep}v=$bust';
+      }
+
+      final qp = Map<String, String>.from(uri.queryParameters);
+      qp['v'] = bust.toString();
+      return uri.replace(queryParameters: qp).toString();
+    }
+
+    // локально обновляем элемент, чтобы UI перерисовался сразу
+    final idx = state.items.indexWhere((e) => e.id == streamId);
+    if (idx != -1 && mounted) {
+      final updated = [...state.items];
+      final old = updated[idx];
+
+      final base = (extractedUrl ?? old.image).trim();
+      final nextImage = base.isEmpty ? old.image : withBust(base);
+
       updated[idx] = StreamItem(
         id: old.id,
         title: old.title,
@@ -199,14 +282,14 @@ class StreamsController extends StateNotifier<StreamsState> {
         endAt: old.endAt,
         status_id: old.status_id,
         type_id: old.type_id,
-        image: old.image,
-        likes: res.count,
-        invite: old.invite
+        image: nextImage,
+        likes: old.likes,
+        invite: old.invite,
       );
 
       state = state.copyWith(items: updated);
     }
 
-    return res.count;
+    return res;
   }
 }

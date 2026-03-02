@@ -91,13 +91,11 @@ class APICommunitiesRepository implements CommunitiesRepository {
     if (raw == null) throw Exception('Нет user_id: не авторизован');
     final userId = int.tryParse(raw.toString());
     if (userId == null) throw Exception('Некорректный user_id');
-    final data =my ? <String, dynamic>{
+    final String userIdKey = my? 'user_id': 'my_user_id';
+    final data =<String, dynamic>{
       'page': page,
       'limit': limit,
-      'user_id': userId,
-    } : <String, dynamic>{
-      'page': page,
-      'limit': limit
+      userIdKey: userId,
     };
     final body = await _post('appGetGroups', data);
     final list = body['data'];

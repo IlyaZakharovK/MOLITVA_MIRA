@@ -12,6 +12,7 @@ class ProfileModel {
   final String address;
   final String rectorName;
   final String rectorPhone;
+  final String avatarUrl;
 
   const ProfileModel({
     required this.role,
@@ -23,6 +24,7 @@ class ProfileModel {
     this.address = '',
     this.rectorName = '',
     this.rectorPhone = '',
+    this.avatarUrl = ''
   });
 
   ProfileModel copyWith({
@@ -35,6 +37,7 @@ class ProfileModel {
     String? address,
     String? rectorName,
     String? rectorPhone,
+    String? avatarUrl
   }) {
     return ProfileModel(
       role: role ?? this.role,
@@ -46,6 +49,7 @@ class ProfileModel {
       address: address ?? this.address,
       rectorName: rectorName ?? this.rectorName,
       rectorPhone: rectorPhone ?? this.rectorPhone,
+      avatarUrl: avatarUrl ?? this.avatarUrl
     );
   }
 }

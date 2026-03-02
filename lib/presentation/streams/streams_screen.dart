@@ -28,6 +28,7 @@ class StreamsScreen extends ConsumerStatefulWidget {
 }
 
 class _StreamsScreenState extends ConsumerState<StreamsScreen> with RouteAware {
+
   bool _appliedInitial = false;
 
   @override
@@ -39,16 +40,15 @@ class _StreamsScreenState extends ConsumerState<StreamsScreen> with RouteAware {
       streamsRouteObserver.subscribe(this, route);
     }
 
-    // ✅ применяем initialStatus один раз при первом заходе
-    if (!_appliedInitial && widget.initialStatus != null) {
+    if (!_appliedInitial) {
       _appliedInitial = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
 
         ref.read(streamsStatusProvider(widget.my).notifier).state =
-        widget.initialStatus!;
+            widget.initialStatus;
 
-        final key = (my: widget.my, status: widget.initialStatus!);
+        final key = (my: widget.my, status: widget.initialStatus);
         ref.read(streamsControllerProvider(key).notifier).refresh();
       });
     }
@@ -268,11 +268,11 @@ class _TabsRow extends StatelessWidget {
               active: value == StreamStatus.finished,
               onTap: () => onChanged(StreamStatus.finished),
             ),
-          _TabChip(
-              text: StreamStatus.blocked.label(),
-              active: value == StreamStatus.blocked,
-              onTap: () => onChanged(StreamStatus.blocked)
-          )]
+            _TabChip(
+                text: StreamStatus.blocked.label(),
+                active: value == StreamStatus.blocked,
+                onTap: () => onChanged(StreamStatus.blocked)
+            )]
         ],
       ),
     );

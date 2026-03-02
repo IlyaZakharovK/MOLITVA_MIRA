@@ -126,6 +126,7 @@ class _AppState extends State<App> {
 
           debugPrint('[WE ARE IN MAIN] $communityID | $invited | $invite');
 
+
           return CommunityDetailsScreen(
             communityID: communityID,
             invited: invited,

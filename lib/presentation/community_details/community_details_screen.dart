@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/painting.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../domain/community_details/community_details.dart';
+import '../../helper/image_helper.dart';
 import '../shell/app_shell.dart';
+import '../widgets/app_message_bar.dart';
 import '../widgets/top_bar.dart';
 import 'community_details_controller.dart';
 
@@ -13,15 +16,28 @@ class CommunityDetailsScreen extends ConsumerStatefulWidget {
   final int communityID;
   final String invite;
   final bool invited;
-  const CommunityDetailsScreen({super.key, required this.communityID, this.invite = '', this.invited = false});
+
+  const CommunityDetailsScreen({
+    super.key,
+    required this.communityID,
+    this.invite = '',
+    this.invited = false,
+  });
 
   @override
   ConsumerState<CommunityDetailsScreen> createState() =>
       _CommunityDetailsScreenState();
 }
 
-class _CommunityDetailsScreenState extends ConsumerState<CommunityDetailsScreen> {
+class _CommunityDetailsScreenState
+    extends ConsumerState<CommunityDetailsScreen> {
   late final ScrollController _scroll;
+
+  bool _uploadingLogo = false;
+
+  // ✅ для cache-busting URL иконки сообщества
+  int _logoBust = DateTime.now().millisecondsSinceEpoch;
+
   CommunityDetailsArgs get _args => (
   groupId: widget.communityID,
   invited: widget.invited,
@@ -53,12 +69,61 @@ class _CommunityDetailsScreenState extends ConsumerState<CommunityDetailsScreen>
     }
   }
 
+  Future<void> _hardImageRefresh() async {
+    // ✅ сбрасываем кэш картинок
+    PaintingBinding.instance.imageCache.clear();
+    PaintingBinding.instance.imageCache.clearLiveImages();
+    // ✅ меняем bust, чтобы URL стал новым
+    setState(() => _logoBust = DateTime.now().millisecondsSinceEpoch);
+  }
+
+  Future<void> _onRefresh() async {
+    await _hardImageRefresh();
+    await ref.read(communityDetailsControllerProvider(_args).notifier).refresh();
+  }
+
+  Future<void> _onPickLogo(Group group) async {
+    if (!group.isOwner) return;
+    if (_uploadingLogo) return;
+
+    final bytes = await pickImageBytes(context);
+    if (bytes == null) return;
+
+    setState(() => _uploadingLogo = true);
+    try {
+      final res = await ref
+          .read(communityDetailsControllerProvider(_args).notifier)
+          .uploadCommunityLogo(bytes);
+
+      await _hardImageRefresh();
+      await ref
+          .read(communityDetailsControllerProvider(_args).notifier)
+          .refresh();
+
+      final status = (res['status'] ?? '').toString();
+      final desc = (res['description'] ?? '').toString();
+      showAppMessageBar(
+        context,
+        status.isEmpty ? 'Иконка сообщества обновлена' : desc,
+        brand: Colors.greenAccent
+      );
+    } catch (e) {
+      showAppMessageBar(
+        context,
+        'Ошибка загрузки иконки: $e',
+        brand: Colors.redAccent,
+      );
+    } finally {
+      if (mounted) setState(() => _uploadingLogo = false);
+    }
+  }
+
   Future<void> _openCreatePostSheet(BuildContext context) async {
     final res = await showModalBottomSheet<_CreatePostResult>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => const _CreatePostSheet(),
+      builder: (_) => _CreatePostSheet(rootContext: context),
     );
 
     if (res == null) return;
@@ -69,22 +134,24 @@ class _CommunityDetailsScreenState extends ConsumerState<CommunityDetailsScreen>
           .createPost(title: res.title, message: res.message);
 
       if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Пост добавлен')));
+        showAppMessageBar(context, 'Пост добавлен');
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Ошибка: $e')));
+        showAppMessageBar(
+          context,
+          'Ошибка: $e',
+          brand: Colors.redAccent,
+        );
       }
     }
   }
 
   Future<void> _onInvite(BuildContext context, Group gp) async {
     final inviteType = gp.isClose && (gp.invite != "");
-    final link = inviteType ?
-    'https://molitvamira.ru/groups/?invite=${Uri.encodeComponent(gp.invite)}':
-    'https://molitvamira.ru/groups/?id=${Uri.encodeComponent(gp.id.toString())}';
+    final link = inviteType
+        ? 'https://molitvamira.ru/groups/?invite=${Uri.encodeComponent(gp.invite)}'
+        : 'https://molitvamira.ru/groups/?id=${Uri.encodeComponent(gp.id.toString())}';
     await Clipboard.setData(ClipboardData(text: link));
 
     await showDialog<bool>(
@@ -93,7 +160,9 @@ class _CommunityDetailsScreenState extends ConsumerState<CommunityDetailsScreen>
       builder: (ctx) => AlertDialog(
         backgroundColor: Colors.white,
         title: const Text('Приглашение'),
-        content: const Text('Пригласительная ссылка скопирована в буфер. Теперь Вы можете ее отправить другому участнику.'),
+        content: const Text(
+          'Пригласительная ссылка скопирована в буфер. Теперь Вы можете ее отправить другому участнику.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -106,8 +175,7 @@ class _CommunityDetailsScreenState extends ConsumerState<CommunityDetailsScreen>
 
   @override
   Widget build(BuildContext context) {
-    final async =
-    ref.watch(communityDetailsControllerProvider(_args));
+    final async = ref.watch(communityDetailsControllerProvider(_args));
 
     return AppShell(
       child: SafeArea(
@@ -119,10 +187,7 @@ class _CommunityDetailsScreenState extends ConsumerState<CommunityDetailsScreen>
                 loading: () => const Center(child: CircularProgressIndicator()),
                 error: (e, _) => Center(child: Text('Ошибка: $e')),
                 data: (st) => RefreshIndicator(
-                  onRefresh: () => ref
-                      .read(communityDetailsControllerProvider(_args)
-                      .notifier)
-                      .refresh(),
+                  onRefresh: _onRefresh,
                   child: Stack(
                     children: [
                       ListView.builder(
@@ -135,12 +200,19 @@ class _CommunityDetailsScreenState extends ConsumerState<CommunityDetailsScreen>
                               padding: const EdgeInsets.only(bottom: 16),
                               child: _CommunityHeader(
                                 group: st.group,
+                                logoBust: _logoBust,
+                                logoUploading: _uploadingLogo,
                                 isSubBusy: st.isSubBusy,
                                 onToggleSubscribe: () => ref
-                                    .read(communityDetailsControllerProvider(
-                                    _args)
-                                    .notifier)
+                                    .read(
+                                  communityDetailsControllerProvider(
+                                    _args,
+                                  ).notifier,
+                                )
                                     .toggleSubscribe(),
+                                onEditLogo: st.group.isOwner
+                                    ? () => _onPickLogo(st.group)
+                                    : null,
                                 onCreatePost: st.group.isOwner
                                     ? () => _openCreatePostSheet(context)
                                     : null,
@@ -157,10 +229,13 @@ class _CommunityDetailsScreenState extends ConsumerState<CommunityDetailsScreen>
                               myUserId: st.currentUserId,
                               myUserName: st.group.ownerName,
                               onSendComment: (postId, text) => ref
-                                  .read(communityDetailsControllerProvider(
-                                  _args)
-                                  .notifier)
+                                  .read(
+                                communityDetailsControllerProvider(
+                                  _args,
+                                ).notifier,
+                              )
                                   .createComment(postId: postId, message: text),
+                              subed: st.group.isSubscribed,
                             ),
                           );
                         },
@@ -189,9 +264,14 @@ class _CommunityHeader extends StatelessWidget {
   static const _green = Color(0xFF0AB39C);
 
   final Group group;
+  final int logoBust;
+  final bool logoUploading;
   final bool isSubBusy;
   final VoidCallback onToggleSubscribe;
   final VoidCallback? onCreatePost;
+
+  /// Если передан — показываем иконку камеры и даём менять логотип.
+  final VoidCallback? onEditLogo;
 
   /// Третья кнопка (например "Пригласить").
   /// Если тебе нужно оставить заглушкой — можно не передавать и будет NO-OP.
@@ -199,9 +279,12 @@ class _CommunityHeader extends StatelessWidget {
 
   const _CommunityHeader({
     required this.group,
+    required this.logoBust,
+    required this.logoUploading,
     required this.isSubBusy,
     required this.onToggleSubscribe,
     required this.onCreatePost,
+    this.onEditLogo,
     this.onInvite,
   });
 
@@ -220,12 +303,8 @@ class _CommunityHeader extends StatelessWidget {
         ),
         onPressed: isSubBusy ? null : onToggleSubscribe,
         child: Text(
-          isSubBusy
-              ? '...'
-              : (subscribed ? 'Вы подписаны' : 'Подписаться'),
-          style: TextStyle(
-            fontSize: 12
-          ),
+          isSubBusy ? '...' : (subscribed ? 'Вы подписаны' : 'Подписаться'),
+          style: TextStyle(fontSize: 12),
         ),
       ),
     );
@@ -240,7 +319,7 @@ class _CommunityHeader extends StatelessWidget {
           ),
         ),
         onPressed: onCreatePost,
-        child: const Text('Добавить пост', style: TextStyle(fontSize: 12),),
+        child: const Text('Добавить пост', style: TextStyle(fontSize: 12)),
       ),
     );
 
@@ -253,13 +332,14 @@ class _CommunityHeader extends StatelessWidget {
             borderRadius: BorderRadius.circular(10),
           ),
         ),
-        onPressed: onInvite ??
+        onPressed:
+        onInvite ??
                 () {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('Приглашение — позже')),
               );
             },
-        child: const Text('Пригласить', style: TextStyle(fontSize: 12), ),
+        child: const Text('Пригласить', style: TextStyle(fontSize: 12)),
       ),
     );
 
@@ -338,7 +418,13 @@ class _CommunityHeader extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _SquareAvatar(url: group.logoUrl),
+              _SquareAvatar(
+                url: group.logoUrl,
+                bust: logoBust,
+                canEdit: onEditLogo != null,
+                uploading: logoUploading,
+                onTapCamera: onEditLogo,
+              ),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
@@ -365,8 +451,11 @@ class _CommunityHeader extends StatelessWidget {
                     const SizedBox(height: 10),
                     Row(
                       children: [
-                        const Icon(Icons.person_outline,
-                            size: 18, color: Colors.black45),
+                        const Icon(
+                          Icons.person_outline,
+                          size: 18,
+                          color: Colors.black45,
+                        ),
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
@@ -385,8 +474,11 @@ class _CommunityHeader extends StatelessWidget {
                     const SizedBox(height: 12),
                     Row(
                       children: [
-                        const Icon(Icons.people_alt_outlined,
-                            size: 18, color: Colors.black38),
+                        const Icon(
+                          Icons.people_alt_outlined,
+                          size: 18,
+                          color: Colors.black38,
+                        ),
                         const SizedBox(width: 6),
                         Text(
                           'Подписчиков: ${group.followersCount}',
@@ -410,29 +502,83 @@ class _CommunityHeader extends StatelessWidget {
     );
   }
 }
+
 class _SquareAvatar extends StatelessWidget {
   final String url;
-  const _SquareAvatar({required this.url});
+
+  final int bust;
+  final bool canEdit;
+  final bool uploading;
+  final VoidCallback? onTapCamera;
+
+  const _SquareAvatar({
+    required this.url,
+    required this.bust,
+    required this.canEdit,
+    required this.uploading,
+    required this.onTapCamera,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final has = url.trim().isNotEmpty;
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(14),
-      child: Container(
-        width: 82,
-        height: 82,
-        color: const Color(0xFFF0F2F4),
-        alignment: Alignment.center,
-        child: has
-            ? Image.network(
-          url,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => const Icon(Icons.group_outlined,
-              size: 40, color: Colors.black38),
-        )
-            : const Icon(Icons.group_outlined, size: 40, color: Colors.black38),
-      ),
+    final raw = url.trim();
+    final has = raw.isNotEmpty;
+
+    final displayUrl = !has
+        ? ''
+        : (raw.contains('?') ? '$raw&v=$bust' : '$raw?v=$bust');
+
+    return Stack(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: Container(
+            width: 82,
+            height: 82,
+            color: const Color(0xFFF0F2F4),
+            alignment: Alignment.center,
+            child: has
+                ? Image.network(
+              displayUrl,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => const Icon(
+                Icons.group_outlined,
+                size: 40,
+                color: Colors.black38,
+              ),
+            )
+                : const Icon(
+              Icons.group_outlined,
+              size: 40,
+              color: Colors.black38,
+            ),
+          ),
+        ),
+        if (canEdit)
+          Positioned(
+            right: -2,
+            bottom: -2,
+            child: Material(
+              color: Colors.white,
+              shape: const CircleBorder(),
+              elevation: 2,
+              child: InkWell(
+                customBorder: const CircleBorder(),
+                onTap: uploading ? null : onTapCamera,
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: uploading
+                      ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                      : const Icon(Icons.photo_camera, size: 18),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
@@ -441,6 +587,7 @@ class _PostCard extends StatefulWidget {
   final Post post;
   final int? myUserId;
   final String? myUserName;
+  final bool subed;
   final Future<void> Function(int postId, String text) onSendComment;
 
   const _PostCard({
@@ -448,6 +595,7 @@ class _PostCard extends StatefulWidget {
     required this.myUserId,
     required this.myUserName,
     required this.onSendComment,
+    required this.subed,
   });
 
   @override
@@ -529,11 +677,13 @@ class _PostCardState extends State<_PostCard> {
 
             Row(
               children: [
-                const CircleAvatar(
-                  radius: 18,
-                  backgroundColor: Color(0xFF3F4F86),
-                ),
-                const SizedBox(width: 12),
+                // CircleAvatar(
+                //   radius: 18,
+                //   backgroundColor: const Color(0xFFF0F2F4),
+                //   child: const Icon(Icons.person, color: Colors.grey),
+                // ),
+                Icon(Icons.person_outlined, color: Colors.grey),
+                const SizedBox(width: 5),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -584,10 +734,7 @@ class _PostCardState extends State<_PostCard> {
             // Комментарии (без "фрейма")
             if (visibleComments.isNotEmpty) ...[
               for (final c in visibleComments) ...[
-                _CommentTile(
-                  c: c,
-                  authorName: _authorName(c.userId, c.userName),
-                ),
+                _CommentTile(c: c),
                 const SizedBox(height: 12),
               ],
               if (showToggleComments)
@@ -610,50 +757,74 @@ class _PostCardState extends State<_PostCard> {
             ],
 
             // Поле ввода во всю ширину + кнопка под ним во всю ширину
-            TextField(
-              controller: _commentCtrl,
-              decoration: const InputDecoration(
-                hintText: 'Написать комментарий…',
-                isDense: true,
-                contentPadding:
-                EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 10),
-            SizedBox(
-              width: double.infinity,
-              height: 44,
-              child: FilledButton(
-                style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF3F4F86),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
+            if (widget.subed) ...[
+              TextField(
+                controller: _commentCtrl,
+                decoration: const InputDecoration(
+                  hintText: 'Написать комментарий…',
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 12,
                   ),
+                  border: OutlineInputBorder(),
                 ),
-                onPressed: _sending
-                    ? null
-                    : () async {
-                  final text = _commentCtrl.text.trim();
-                  if (text.isEmpty) return;
-
-                  setState(() => _sending = true);
-                  try {
-                    await widget.onSendComment(postId, text);
-                    _commentCtrl.clear();
-                  } finally {
-                    if (mounted) setState(() => _sending = false);
-                  }
-                },
-                child: _sending
-                    ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-                    : const Text('Отправить комментарий'),
               ),
-            ),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                height: 44,
+                child: FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF3F4F86),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  onPressed: _sending
+                      ? null
+                      : () async {
+                    final text = _commentCtrl.text.trim();
+                    if (text.isEmpty) {
+                      showAppMessageBar(
+                        context,
+                        'Введите текст комментария',
+                        brand: Colors.redAccent,
+                      );
+                      return;
+                    }
+
+                    setState(() => _sending = true);
+                    try {
+                      await widget.onSendComment(postId, text);
+                      _commentCtrl.clear();
+                      if (mounted) {
+                        showAppMessageBar(context, 'Комментарий добавлен');
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        showAppMessageBar(
+                          context,
+                          'Ошибка: $e',
+                          brand: Colors.redAccent,
+                        );
+                      }
+                    } finally {
+                      if (mounted) setState(() => _sending = false);
+                    }
+                  },
+                  child: _sending
+                      ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                      : const Text('Отправить комментарий'),
+                ),
+              ),
+            ] else ...[
+              _NoSubscribeCommentsHint(),
+            ],
           ],
         ),
       ),
@@ -661,14 +832,43 @@ class _PostCardState extends State<_PostCard> {
   }
 }
 
+class _NoSubscribeCommentsHint extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF5F6FA),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0x22000000)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: const [
+          Icon(Icons.lock_outline, size: 18, color: Colors.black45),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Комментировать могут только подписчики сообщества. Подпишитесь, чтобы оставить комментарий.',
+              style: TextStyle(
+                fontSize: 12.5,
+                height: 1.35,
+                color: Colors.black54,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _CommentTile extends StatelessWidget {
   final Comment c;
-  final String authorName;
 
-  const _CommentTile({
-    required this.c,
-    required this.authorName,
-  });
+  const _CommentTile({required this.c});
 
   @override
   Widget build(BuildContext context) {
@@ -692,9 +892,11 @@ class _CommentTile extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                authorName,
-                style:
-                const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+                c.userName,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
               const SizedBox(height: 2),
               Text(
@@ -706,7 +908,6 @@ class _CommentTile extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 6),
-              // Комментарий: обрезка + "Показать полностью/Свернуть"
               _SelfExpandableText(
                 text: c.message,
                 maxLines: 3,
@@ -729,7 +930,6 @@ class _CommentTile extends StatelessWidget {
   }
 }
 
-/// Самостоятельно хранит expanded внутри себя — удобно для комментариев.
 class _SelfExpandableText extends StatefulWidget {
   final String text;
   final int maxLines;
@@ -772,7 +972,9 @@ class _SelfExpandableTextState extends State<_SelfExpandableText> {
               t,
               style: widget.textStyle,
               maxLines: _expanded ? null : widget.maxLines,
-              overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+              overflow: _expanded
+                  ? TextOverflow.visible
+                  : TextOverflow.ellipsis,
             ),
             if (overflow)
               Padding(
@@ -792,16 +994,17 @@ class _SelfExpandableTextState extends State<_SelfExpandableText> {
   }
 }
 
-/* ===== safe create post sheet ===== */
-
 class _CreatePostResult {
   final String title;
   final String message;
+
   const _CreatePostResult({required this.title, required this.message});
 }
 
 class _CreatePostSheet extends StatefulWidget {
-  const _CreatePostSheet();
+  final BuildContext rootContext;
+
+  const _CreatePostSheet({required this.rootContext});
 
   @override
   State<_CreatePostSheet> createState() => _CreatePostSheetState();
@@ -830,19 +1033,25 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
     final message = _msgCtrl.text.trim();
 
     if (title.isEmpty || message.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Заполните заголовок и текст')),
+      showAppMessageBar(
+        widget.rootContext,
+        'Заполните заголовок и текст',
+        brand: Colors.redAccent,
       );
       return;
     }
 
-    Navigator.of(context).pop(_CreatePostResult(title: title, message: message));
+    Navigator.of(
+      context,
+    ).pop(_CreatePostResult(title: title, message: message));
   }
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
       child: Container(
         decoration: const BoxDecoration(
           color: Colors.white,

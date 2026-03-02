@@ -11,7 +11,6 @@ import '../../data/streaming/live_translation_repository.dart';
 import '../../data/streaming/sfu_ws_client.dart';
 import '../../domain/prayer_request/prayer_request_repository.dart';
 import '../../providers.dart';
-import '../profile/profile_controller.dart';
 import '../../domain/profile/profile_role.dart';
 
 final liveTranslationRepositoryProvider = Provider<LiveTranslationRepository>((

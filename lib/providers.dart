@@ -11,28 +11,28 @@ import 'data/auth/fake_auth_repository.dart';
 import 'data/community_details/api_community_details_repository.dart';
 import 'data/dioceses/api_dioceses_repository.dart';
 import 'data/news/fake_news_repository.dart';
-import 'data/post_details/fake_post_details_repository.dart';
 import 'data/prayer_request/api_prayer_request_repository.dart';
 import 'data/prayer_requests/fake_prayer_requests_repository.dart';
 import 'data/notifications/notifications_repository.dart';
 import 'data/communities/communities_repository.dart';
 import 'data/auth/pending_activation_store.dart';
 
+import 'data/profile/api_profile_repository.dart';
+import 'data/upload/upload_repository.dart';
 import 'domain/auth/auth_repository.dart';
 import 'domain/community_details/community_details_repository.dart';
 import 'domain/dioceses/diocese.dart';
 import 'domain/dioceses/dioceses_repository.dart';
-import 'domain/post_details/post_details_repository.dart';
 import 'domain/prayer_request/prayer_request_repository.dart';
 import 'domain/prayer_requests/prayer_requests_repository.dart';
 import 'domain/notifications/notifications_repository.dart';
 import 'domain/communities/communities_repository.dart';
+import 'domain/profile/profile_repository.dart';
 import 'domain/register/registration_manager.dart';
 
 import 'presentation/auth/auth_controller.dart';
 import 'presentation/auth/auth_state.dart';
 
-// --- core api deps (override in main)
 final dioProvider = Provider<Dio>((ref) {
   throw UnimplementedError('dioProvider must be overridden in main()');
 });
@@ -61,7 +61,6 @@ final diocesesProvider = FutureProvider<List<Diocese>>((ref) async {
   return ref.watch(diocesesRepositoryProvider).getDioceses();
 });
 
-// --- auth
 const _useFakeAuth = false;
 
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
@@ -88,7 +87,6 @@ StateNotifierProvider<AuthController, AuthState>((ref) {
 // --- register flow
 final registrationManagerProvider = Provider((ref) => RegistrationManager());
 
-// --- остальные репозитории
 final notificationsRepositoryProvider = Provider<NotificationsRepository>((ref) {
   return FakeNotificationsRepository();
 });
@@ -119,6 +117,14 @@ final communityDetailsRepositoryProvider = Provider<CommunityDetailsRepository>(
   );
 });
 
-final postDetailsRepositoryProvider = Provider<PostDetailsRepository>((ref) {
-  return FakePostDetailsRepository();
+final uploadRepositoryProvider = Provider<UploadRepository>((ref) {
+  final dio = ref.watch(dioProvider);
+  return UploadRepository(dio);
+});
+
+final profileRepositoryProvider = Provider<ProfileRepository>((ref) {
+  return ApiProfileRepository(
+    dio: ref.watch(dioProvider),
+    local: ref.watch(authLocalStoreProvider),
+  );
 });

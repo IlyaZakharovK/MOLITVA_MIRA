@@ -1,6 +1,9 @@
+import 'dart:typed_data';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/auth/auth_local_store.dart';
+import '../../data/upload/upload_repository.dart';
 import '../../domain/community_details/community_details.dart';
 import '../../domain/community_details/community_details_repository.dart';
 import '../../providers.dart';
@@ -55,11 +58,11 @@ class CommunityDetailsState {
 }
 
 final communityDetailsControllerProvider =
-    AsyncNotifierProvider.family<
-      CommunityDetailsController,
-      CommunityDetailsState,
-        CommunityDetailsArgs
-    >(CommunityDetailsController.new);
+AsyncNotifierProvider.family<
+    CommunityDetailsController,
+    CommunityDetailsState,
+    CommunityDetailsArgs
+>(CommunityDetailsController.new);
 
 class CommunityDetailsController
     extends FamilyAsyncNotifier<CommunityDetailsState, CommunityDetailsArgs> {
@@ -69,6 +72,8 @@ class CommunityDetailsController
       ref.read(communityDetailsRepositoryProvider);
 
   AuthLocalStore get _local => ref.read(authLocalStoreProvider);
+
+  UploadRepository get _upload => ref.read(uploadRepositoryProvider);
 
   late final int _groupId;
   late final bool _invited;
@@ -83,7 +88,7 @@ class CommunityDetailsController
   @override
   Future<CommunityDetailsState> build(
       CommunityDetailsArgs args,
-  ) async {
+      ) async {
     _invited = args.invited;
     _invite = args.invite;
 
@@ -230,11 +235,17 @@ class CommunityDetailsController
     final cur = state.valueOrNull;
     if (cur == null) return;
 
+    final t = title.trim();
+    final m = message.trim();
+    if (t.isEmpty || m.isEmpty) {
+      throw Exception('Заполните заголовок и текст');
+    }
+
     await _repo.createPost(
       groupId: cur.group.id,
       ownerId: cur.group.ownerId,
-      title: title,
-      message: message,
+      title: t,
+      message: m,
     );
 
     await refresh();
@@ -247,11 +258,42 @@ class CommunityDetailsController
     final cur = state.valueOrNull;
     if (cur == null) return;
 
+    final m = message.trim();
+    if (m.isEmpty) {
+      throw Exception('Введите текст комментария');
+    }
+
     await _repo.createComment(
       groupId: cur.group.id,
       postId: postId,
-      message: message,
+      message: m,
     );
     await refresh();
+  }
+
+  /// ✅ Загрузка/смена иконки сообщества (logo)
+  /// Важно: type зависит от бэкенда. По аналогии с аватаром пользователя (type=1)
+  /// для сообщества чаще всего используется type=2.
+  Future<Map<String, dynamic>> uploadCommunityLogo(Uint8List bytes) async {
+    final cur = state.valueOrNull;
+    if (cur == null) throw Exception('Сообщество ещё не загружено');
+
+    if (!cur.group.isOwner) {
+      throw Exception('Недостаточно прав для изменения иконки');
+    }
+
+    final groupId = cur.group.id;
+    if (groupId == 0) {
+      throw Exception('Не удалось определить groupId');
+    }
+
+    final res = await _upload.uploadImageBase64(
+      type: 2,
+      imgId: groupId,
+      bytes: bytes,
+    );
+
+    await refresh();
+    return res;
   }
 }
