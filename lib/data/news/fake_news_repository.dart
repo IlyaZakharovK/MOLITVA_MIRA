@@ -3,7 +3,6 @@ import 'package:dio/dio.dart';
 import '../../domain/auth/auth_failure.dart';
 import '../../domain/news/news_item.dart';
 import '../../domain/news/news_repository.dart';
-import '../auth/auth_local_store.dart';
 
 class APINewsRepository implements NewsRepository {
   APINewsRepository({

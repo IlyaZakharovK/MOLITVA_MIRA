@@ -1,7 +1,8 @@
+import 'community_data_item.dart';
 import 'community_item.dart';
 
 abstract class CommunitiesRepository {
-  Future<List<CommunityItem>> fetchCommunities({
+  Future<CommunityDataItem> fetchCommunities({
     required int page,
     required int limit,
     required bool my

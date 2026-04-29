@@ -90,7 +90,7 @@ class _StreamsScreenState extends ConsumerState<StreamsScreen> with RouteAware {
         ? st.items
         : st.items
         .where((e) =>
-    e.type_id != StreamType.closed && e.type_id != StreamType.family)
+    e.typeId != StreamType.closed && e.typeId != StreamType.family)
         .toList(growable: false);
 
     return AppShell(

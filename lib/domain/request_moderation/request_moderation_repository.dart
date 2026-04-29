@@ -7,8 +7,6 @@ abstract class RequestModerationRepository {
     required int limit,
   });
 
-  // ⚠️ endpoints для благословить/отклонить в описании не дали.
-  // Я оставил интерфейс — подключишь, когда уточнишь method.
   Future<void> bless(int requestId);
-  Future<void> reject(int requestId);
+  Future<void> reject({required int requestId, String comment});
 }

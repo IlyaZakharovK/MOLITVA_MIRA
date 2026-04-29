@@ -1,10 +1,10 @@
 import 'package:dio/dio.dart';
 import 'package:vsem_mirom/domain/streams/stream_status_id.dart';
 
-import '../../data/auth/auth_local_store.dart';
-import '../../domain/streams/streams_item.dart';
-import '../../domain/streams/stream_status.dart';
-import '../../domain/streams/streams_repository.dart';
+import 'package:vsem_mirom/data/auth/auth_local_store.dart';
+import 'package:vsem_mirom/domain/streams/streams_item.dart';
+import 'package:vsem_mirom/domain/streams/stream_status.dart';
+import 'package:vsem_mirom/domain/streams/streams_repository.dart';
 
 class LikeTranslationResult {
   final String description;
@@ -61,7 +61,6 @@ class ApiStreamsRepository implements StreamsRepository {
 
     final body = resp.data;
 
-    // ✅ Если трансформер Dio вернул Map<dynamic,dynamic> — приводим ключи к String
     if (body is Map) {
       return _stringKeyedMap(body);
     }
@@ -69,8 +68,6 @@ class ApiStreamsRepository implements StreamsRepository {
     throw Exception('Некорректный ответ сервера');
   }
 
-  /// ✅ Приводим любые ключи Map к строкам, чтобы не ловить
-  /// "type 'int' is not a subtype of type 'String'".
   Map<String, dynamic> _stringKeyedMap(Map raw) {
     final out = <String, dynamic>{};
     raw.forEach((k, v) => out[k.toString()] = v);
@@ -101,13 +98,11 @@ class ApiStreamsRepository implements StreamsRepository {
       'limit': limit,
     };
 
-    if (my) {
-      final raw = await _local.getToken();
-      if (raw == null) throw Exception('Нет user_id: не авторизован');
-      final userId = int.tryParse(raw.toString());
-      if (userId == null) throw Exception('Некорректный user_id');
-      data['user_id'] = userId;
-    }
+    final raw = await _local.getToken();
+    if (raw == null) throw Exception('Нет user_id: не авторизован');
+    final userId = int.tryParse(raw.toString());
+    if (userId == null) throw Exception('Некорректный user_id');
+    data[my? 'user_id': 'my_user_id'] = userId;
 
     final body = await _post('appGetTranslations', data);
 
@@ -116,40 +111,25 @@ class ApiStreamsRepository implements StreamsRepository {
     }
 
     final list = body['data'];
-    final meta = body['meta'];
 
     final parsed = (list is List)
         ? list.whereType<Map>().map((e) {
-            // ✅ важно: stringify keys, иначе может падать на completed/любом другом
             final map = _stringKeyedMap(e);
             return StreamItem.fromApiJson(map);
           }).toList()
         : <StreamItem>[];
 
-    // ✅ Фильтруем blocked/deleted только для публичной ленты
     final items = my
         ? parsed
         : parsed
               .where(
                 (e) =>
-                    e.status_id != StreamStatusID.blocked &&
-                    e.status_id != StreamStatusID.deleted,
+                    e.statusId != StreamStatusID.blocked &&
+                    e.statusId != StreamStatusID.deleted,
               )
               .toList(growable: false);
 
-
-    int total = items.length;
-    int mFrom = from;
-    int mLimit = limit;
-
-    if (meta is Map) {
-      final m = _stringKeyedMap(meta);
-      total = _toInt(m['total'], def: total);
-      mFrom = _toInt(m['from'], def: from);
-      mLimit = _toInt(m['limit'], def: limit);
-    }
-
-    return StreamsPage(items: items, total: total, from: mFrom, limit: mLimit);
+    return StreamsPage(items: items, from: from + parsed.length, limit: limit);
   }
 
   Future<LikeTranslationResult> likeTranslation({

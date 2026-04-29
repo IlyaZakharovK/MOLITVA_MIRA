@@ -4,7 +4,7 @@ import '../../domain/notifications/notifications_repository.dart';
 class FakeNotificationsRepository implements NotificationsRepository {
   @override
   Future<List<NotificationItem>> fetchNotifications() async {
-    await Future<void>.delayed(const Duration(milliseconds: 650)); // имитация сети
+    await Future<void>.delayed(const Duration(milliseconds: 650));
 
     return [
       NotificationItem(

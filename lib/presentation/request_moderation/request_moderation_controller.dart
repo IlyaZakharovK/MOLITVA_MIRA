@@ -182,8 +182,8 @@ class RequestModerationController extends StateNotifier<RequestModerationState> 
     await refresh();
   }
 
-  Future<void> reject(RequestModerationItem item) async {
-    await _repo.reject(item.id);
+  Future<void> reject(RequestModerationItem item, String comment) async {
+    await _repo.reject(requestId: item.id, comment: comment);
     await refresh();
   }
 }

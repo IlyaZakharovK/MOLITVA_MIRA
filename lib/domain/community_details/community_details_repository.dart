@@ -11,6 +11,8 @@ abstract class CommunityDetailsRepository {
     required int page,
   });
 
+  Future<bool> allUnAll({required int groupId});
+
   Future<bool> createPost({
     required int groupId,
     required int ownerId,
@@ -18,16 +20,17 @@ abstract class CommunityDetailsRepository {
     required String message,
   });
 
+  Future<void> deleteComment({
+    required int groupId,
+    required int postId,
+    required int commentId,
+});
+
   Future<bool> createComment({
     required int groupId,
     required int postId,
     required String message,
   });
 
-  Future<bool> subUnSub({
-    required int action,
-    required int groupId
-  });
-
-
+  Future<bool> subUnSub({required int action, required int groupId});
 }

@@ -1,8 +1,8 @@
 class PostDetails {
   final String id;
 
-  final String author;     // имя/сообщество
-  final String timeLabel;  // строка (пока)
+  final String author;
+  final String timeLabel;
   final String text;
   final bool hasImage;
 

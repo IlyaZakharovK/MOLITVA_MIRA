@@ -5,9 +5,9 @@ class AuthLocalStore {
 
   final FlutterSecureStorage _storage;
 
-  static const _kToken = 'auth_token'; // user_id (int) as string
+  static const _kToken = 'auth_token';
   static const _kEmail = 'auth_email';
-  static const _kRegistered = 'auth_registered'; // "1"/"0"
+  static const _kRegistered = 'auth_registered';
 
   Future<void> setToken(String? token) async {
     if (token == null || token.isEmpty) {
@@ -25,7 +25,6 @@ class AuthLocalStore {
       }
       return int.tryParse(tokenString);
     } catch (e) {
-      // ignore
       return null;
     }
   }

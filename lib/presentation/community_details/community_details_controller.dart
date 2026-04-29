@@ -58,11 +58,11 @@ class CommunityDetailsState {
 }
 
 final communityDetailsControllerProvider =
-AsyncNotifierProvider.family<
-    CommunityDetailsController,
-    CommunityDetailsState,
-    CommunityDetailsArgs
->(CommunityDetailsController.new);
+    AsyncNotifierProvider.family<
+      CommunityDetailsController,
+      CommunityDetailsState,
+      CommunityDetailsArgs
+    >(CommunityDetailsController.new);
 
 class CommunityDetailsController
     extends FamilyAsyncNotifier<CommunityDetailsState, CommunityDetailsArgs> {
@@ -86,9 +86,7 @@ class CommunityDetailsController
   }
 
   @override
-  Future<CommunityDetailsState> build(
-      CommunityDetailsArgs args,
-      ) async {
+  Future<CommunityDetailsState> build(CommunityDetailsArgs args) async {
     _invited = args.invited;
     _invite = args.invite;
 
@@ -202,6 +200,7 @@ class CommunityDetailsController
       isOwner: g.isOwner,
       invite: g.invite,
       isClose: g.isClose,
+      allowComments: g.allowComments,
     );
 
     // optimistic
@@ -226,6 +225,23 @@ class CommunityDetailsController
       }
       rethrow;
     }
+  }
+
+  Future<void> setCommentsStatus() async {
+    final cur = state.valueOrNull;
+    if (cur == null) return;
+    await _repo.allUnAll(groupId: cur.group.id);
+    refresh();
+  }
+
+  Future<void> deleteComment( {
+    required int postId,
+    required int commentId
+}) async {
+    final cur = state.valueOrNull;
+    if (cur == null) return;
+    await _repo.deleteComment(groupId: cur.group.id, commentId: commentId, postId: postId);
+    refresh();
   }
 
   Future<void> createPost({

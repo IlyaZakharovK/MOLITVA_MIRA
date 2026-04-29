@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import '../../data/auth/auth_local_store.dart';
+import '../../domain/funcs/parseFuncs.dart';
 import '../../domain/profile/profile_model.dart';
 import '../../domain/profile/profile_repository.dart';
 import '../../domain/profile/profile_role.dart';
@@ -98,6 +99,7 @@ class ApiProfileRepository implements ProfileRepository {
       rectorPhone: _numToPhone(data['nast_phone']),
       eparchy: diocesesStr,
       avatarUrl: (data['avatarUrl'] ?? '').toString(),
+      canBlass: toBool(data['can_bless'])
     );
   }
 

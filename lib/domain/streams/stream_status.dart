@@ -9,7 +9,6 @@ extension StreamStatusLabel on StreamStatus {
   };
 }
 
-/// то, что требует бэк
 extension StreamStatusApi on StreamStatus {
   String get apiType => switch (this) {
     StreamStatus.active => 'active',

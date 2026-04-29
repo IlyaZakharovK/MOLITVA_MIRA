@@ -35,7 +35,6 @@ class _CommunityDetailsScreenState
 
   bool _uploadingLogo = false;
 
-  // ✅ для cache-busting URL иконки сообщества
   int _logoBust = DateTime.now().millisecondsSinceEpoch;
 
   CommunityDetailsArgs get _args => (
@@ -70,10 +69,8 @@ class _CommunityDetailsScreenState
   }
 
   Future<void> _hardImageRefresh() async {
-    // ✅ сбрасываем кэш картинок
     PaintingBinding.instance.imageCache.clear();
     PaintingBinding.instance.imageCache.clearLiveImages();
-    // ✅ меняем bust, чтобы URL стал новым
     setState(() => _logoBust = DateTime.now().millisecondsSinceEpoch);
   }
 
@@ -105,7 +102,7 @@ class _CommunityDetailsScreenState
       showAppMessageBar(
         context,
         status.isEmpty ? 'Иконка сообщества обновлена' : desc,
-        brand: Colors.greenAccent
+        brand: Colors.greenAccent,
       );
     } catch (e) {
       showAppMessageBar(
@@ -148,7 +145,7 @@ class _CommunityDetailsScreenState
   }
 
   Future<void> _onInvite(BuildContext context, Group gp) async {
-    final inviteType = gp.isClose && (gp.invite != "");
+    final inviteType = gp.isClose && (gp.invite != '');
     final link = inviteType
         ? 'https://molitvamira.ru/groups/?invite=${Uri.encodeComponent(gp.invite)}'
         : 'https://molitvamira.ru/groups/?id=${Uri.encodeComponent(gp.id.toString())}';
@@ -171,6 +168,52 @@ class _CommunityDetailsScreenState
         ],
       ),
     );
+  }
+
+  Future<void> _onToggleComments(Group group) async {
+    if (!group.isOwner) return;
+
+    try {
+      await ref
+          .read(communityDetailsControllerProvider(_args).notifier)
+          .setCommentsStatus();
+
+      if (!mounted) return;
+      showAppMessageBar(
+        context,
+        group.allowComments
+            ? 'Комментарии запрещены'
+            : 'Комментарии разрешены',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      showAppMessageBar(
+        context,
+        'Ошибка: $e',
+        brand: Colors.redAccent,
+      );
+    }
+  }
+
+  Future<void> _onDeleteComment({
+    required int postId,
+    required int commentId,
+  }) async {
+    try {
+      await ref
+          .read(communityDetailsControllerProvider(_args).notifier)
+          .deleteComment(postId: postId, commentId: commentId);
+
+      if (!mounted) return;
+      showAppMessageBar(context, 'Комментарий удалён');
+    } catch (e) {
+      if (!mounted) return;
+      showAppMessageBar(
+        context,
+        'Ошибка: $e',
+        brand: Colors.redAccent,
+      );
+    }
   }
 
   @override
@@ -217,6 +260,9 @@ class _CommunityDetailsScreenState
                                     ? () => _openCreatePostSheet(context)
                                     : null,
                                 onInvite: () => _onInvite(context, st.group),
+                                onToggleComments: st.group.isOwner
+                                    ? () => _onToggleComments(st.group)
+                                    : null,
                               ),
                             );
                           }
@@ -235,7 +281,10 @@ class _CommunityDetailsScreenState
                                 ).notifier,
                               )
                                   .createComment(postId: postId, message: text),
+                              onDeleteComment: _onDeleteComment,
                               subed: st.group.isSubscribed,
+                              allowComments: st.group.allowComments,
+                              isOwner: st.group.isOwner,
                             ),
                           );
                         },
@@ -262,6 +311,7 @@ class _CommunityDetailsScreenState
 class _CommunityHeader extends StatelessWidget {
   static const _blue = Color(0xFF3F4F86);
   static const _green = Color(0xFF0AB39C);
+  static const _red = Color(0xFFD9534F);
 
   final Group group;
   final int logoBust;
@@ -269,13 +319,9 @@ class _CommunityHeader extends StatelessWidget {
   final bool isSubBusy;
   final VoidCallback onToggleSubscribe;
   final VoidCallback? onCreatePost;
-
-  /// Если передан — показываем иконку камеры и даём менять логотип.
   final VoidCallback? onEditLogo;
-
-  /// Третья кнопка (например "Пригласить").
-  /// Если тебе нужно оставить заглушкой — можно не передавать и будет NO-OP.
   final VoidCallback? onInvite;
+  final Future<void> Function()? onToggleComments;
 
   const _CommunityHeader({
     required this.group,
@@ -286,6 +332,7 @@ class _CommunityHeader extends StatelessWidget {
     required this.onCreatePost,
     this.onEditLogo,
     this.onInvite,
+    this.onToggleComments,
   });
 
   @override
@@ -304,7 +351,7 @@ class _CommunityHeader extends StatelessWidget {
         onPressed: isSubBusy ? null : onToggleSubscribe,
         child: Text(
           isSubBusy ? '...' : (subscribed ? 'Вы подписаны' : 'Подписаться'),
-          style: TextStyle(fontSize: 12),
+          style: const TextStyle(fontSize: 11),
         ),
       ),
     );
@@ -319,7 +366,7 @@ class _CommunityHeader extends StatelessWidget {
           ),
         ),
         onPressed: onCreatePost,
-        child: const Text('Добавить пост', style: TextStyle(fontSize: 12)),
+        child: const Text('Добавить пост', style: TextStyle(fontSize: 11), textAlign: TextAlign.center,),
       ),
     );
 
@@ -332,71 +379,77 @@ class _CommunityHeader extends StatelessWidget {
             borderRadius: BorderRadius.circular(10),
           ),
         ),
-        onPressed:
-        onInvite ??
+        onPressed: onInvite ??
                 () {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('Приглашение — позже')),
               );
             },
-        child: const Text('Пригласить', style: TextStyle(fontSize: 12)),
+        child: const Text('Пригласить', style: TextStyle(fontSize: 11)),
       ),
     );
 
-    // Динамически собираем список кнопок (2 или 3)
+    Widget commentsButton() => SizedBox(
+      height: 45,
+      child: OutlinedButton(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: group.allowComments ? _green : _red,
+          side: BorderSide(
+            color: group.allowComments ? _green : _red,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+        onPressed: onToggleComments,
+        child: Text(
+          group.allowComments
+              ? 'Комментарии разрешены'
+              : 'Комментарии запрещены',
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+        ),
+      ),
+    );
+
     final btns = <Widget>[
       subButton(),
       if (onCreatePost != null) createPostButton(),
       inviteButton(),
+      commentsButton(),
     ];
 
     Widget buttonsLayout() {
       const gap = 10.0;
 
-      return LayoutBuilder(
-        builder: (context, constraints) {
-          if (btns.length == 2) {
-            return Row(
-              children: [
-                Expanded(child: btns[0]),
-                const SizedBox(width: gap),
-                Expanded(child: btns[1]),
-              ],
-            );
-          }
-          final oneRow = constraints.maxWidth >= 360;
+      final rows = <Widget>[];
+      for (var i = 0; i < btns.length; i += 2) {
+        final left = btns[i];
+        final right = i + 1 < btns.length ? btns[i + 1] : null;
 
-          if (oneRow) {
-            return Row(
-              children: [
-                Expanded(child: btns[0]),
-                const SizedBox(width: gap),
-                Expanded(child: btns[1]),
-                const SizedBox(width: gap),
-                Expanded(child: btns[2]),
-              ],
-            );
-          }
-
-          return Column(
+        rows.add(
+          Row(
             children: [
-              Row(
-                children: [
-                  Expanded(child: btns[0]),
-                  const SizedBox(width: gap),
-                  Expanded(child: btns[1]),
-                ],
-              ),
-              const SizedBox(height: gap),
-              Row(
-                children: [
-                  const Spacer(),
-                  Expanded(child: btns[2]),
-                ],
-              ),
+              Expanded(child: left),
+              if (right != null) ...[
+                const SizedBox(width: gap),
+                Expanded(child: right),
+              ] else ...[
+                const SizedBox(width: gap),
+                const Expanded(child: SizedBox.shrink()),
+              ],
             ],
-          );
-        },
+          ),
+        );
+      }
+
+      return Column(
+        children: [
+          for (var i = 0; i < rows.length; i++) ...[
+            if (i > 0) const SizedBox(height: gap),
+            rows[i],
+          ],
+        ],
       );
     }
 
@@ -505,7 +558,6 @@ class _CommunityHeader extends StatelessWidget {
 
 class _SquareAvatar extends StatelessWidget {
   final String url;
-
   final int bust;
   final bool canEdit;
   final bool uploading;
@@ -588,14 +640,23 @@ class _PostCard extends StatefulWidget {
   final int? myUserId;
   final String? myUserName;
   final bool subed;
+  final bool allowComments;
+  final bool isOwner;
   final Future<void> Function(int postId, String text) onSendComment;
+  final Future<void> Function({
+  required int postId,
+  required int commentId,
+  }) onDeleteComment;
 
   const _PostCard({
     required this.post,
     required this.myUserId,
     required this.myUserName,
     required this.onSendComment,
+    required this.onDeleteComment,
     required this.subed,
+    required this.allowComments,
+    required this.isOwner,
   });
 
   @override
@@ -604,9 +665,9 @@ class _PostCard extends StatefulWidget {
 
 class _PostCardState extends State<_PostCard> {
   bool _commentsExpanded = false;
-
   late final TextEditingController _commentCtrl;
   bool _sending = false;
+  int? _deletingCommentId;
 
   @override
   void initState() {
@@ -625,22 +686,83 @@ class _PostCardState extends State<_PostCard> {
     final myName = (widget.myUserName ?? '').trim();
 
     if (myId != null && myId != 0 && authorId == myId && myName.isNotEmpty) {
-      return myName; // требование: имя, а не "Вы"
+      return myName;
     }
     return serverName;
+  }
+
+  int _commentId(Comment c) {
+    final dynamic dc = c;
+
+    try {
+      final raw = dc.commentId;
+      if (raw is int) return raw;
+      final parsed = int.tryParse(raw.toString());
+      if (parsed != null) return parsed;
+    } catch (_) {}
+
+    try {
+      final raw = dc.id;
+      if (raw is int) return raw;
+      final parsed = int.tryParse(raw.toString());
+      if (parsed != null) return parsed;
+    } catch (_) {}
+
+    return 0;
+  }
+
+  Future<void> _onDeleteComment(int postId, Comment c) async {
+    final commentId = _commentId(c);
+    if (commentId == 0) {
+      showAppMessageBar(
+        context,
+        'Не удалось определить комментарий для удаления',
+        brand: Colors.redAccent,
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Удалить комментарий?'),
+        content: const Text(
+          'Комментарий будет удалён без возможности восстановления.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Удалить'),
+          ),
+        ],
+      ),
+    ) ??
+        false;
+
+    if (!confirmed) return;
+
+    setState(() => _deletingCommentId = commentId);
+    try {
+      await widget.onDeleteComment(postId: postId, commentId: commentId);
+    } finally {
+      if (mounted) setState(() => _deletingCommentId = null);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final post = widget.post;
-
     final dateLabel = post.dateAdd;
     final author = _authorName(post.userId, post.userName);
-
     final postId = post.postId != 0 ? post.postId : post.id;
-
     final comments = post.comments;
     final showToggleComments = comments.length > 3;
+    final canWriteComments = widget.subed && widget.allowComments;
 
     final visibleComments = _commentsExpanded
         ? comments
@@ -674,15 +796,9 @@ class _PostCardState extends State<_PostCard> {
               ),
             ),
             const SizedBox(height: 10),
-
             Row(
               children: [
-                // CircleAvatar(
-                //   radius: 18,
-                //   backgroundColor: const Color(0xFFF0F2F4),
-                //   child: const Icon(Icons.person, color: Colors.grey),
-                // ),
-                Icon(Icons.person_outlined, color: Colors.grey),
+                const Icon(Icons.person_outlined, color: Colors.grey),
                 const SizedBox(width: 5),
                 Expanded(
                   child: Column(
@@ -710,10 +826,7 @@ class _PostCardState extends State<_PostCard> {
                 ),
               ],
             ),
-
             const SizedBox(height: 10),
-
-            // Пост: 5 строк + "Показать полностью/Свернуть"
             _SelfExpandableText(
               text: post.message,
               maxLines: 5,
@@ -728,13 +841,15 @@ class _PostCardState extends State<_PostCard> {
                 fontWeight: FontWeight.w800,
               ),
             ),
-
             const SizedBox(height: 14),
-
-            // Комментарии (без "фрейма")
             if (visibleComments.isNotEmpty) ...[
               for (final c in visibleComments) ...[
-                _CommentTile(c: c),
+                _CommentTile(
+                  c: c,
+                  canDelete: widget.isOwner,
+                  deleting: _deletingCommentId == _commentId(c),
+                  onDelete: widget.isOwner ? () => _onDeleteComment(postId, c) : null,
+                ),
                 const SizedBox(height: 12),
               ],
               if (showToggleComments)
@@ -755,9 +870,7 @@ class _PostCardState extends State<_PostCard> {
                   ),
                 ),
             ],
-
-            // Поле ввода во всю ширину + кнопка под ним во всю ширину
-            if (widget.subed) ...[
+            if (canWriteComments) ...[
               TextField(
                 controller: _commentCtrl,
                 decoration: const InputDecoration(
@@ -822,6 +935,8 @@ class _PostCardState extends State<_PostCard> {
                       : const Text('Отправить комментарий'),
                 ),
               ),
+            ] else if (!widget.allowComments) ...[
+              _CommentsDisabledHint(isOwner: widget.isOwner),
             ] else ...[
               _NoSubscribeCommentsHint(),
             ],
@@ -843,15 +958,58 @@ class _NoSubscribeCommentsHint extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: const Color(0x22000000)),
       ),
-      child: Row(
+      child: const Row(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: const [
+        children: [
           Icon(Icons.lock_outline, size: 18, color: Colors.black45),
           SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Комментировать могут только подписчики сообщества. Подпишитесь, чтобы оставить комментарий.',
+              'Комментировать могут только подписчики сообщества.',
               style: TextStyle(
+                fontSize: 12.5,
+                height: 1.35,
+                color: Colors.black54,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CommentsDisabledHint extends StatelessWidget {
+  final bool isOwner;
+
+  const _CommentsDisabledHint({required this.isOwner});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF5F6FA),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0x22000000)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.comments_disabled_outlined,
+            size: 18,
+            color: Colors.black45,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              isOwner
+                  ? 'Комментарии в сообществе сейчас запрещены. Вы можете снова разрешить их кнопкой в заголовке сообщества.'
+                  : 'Комментарии в этом сообществе сейчас запрещены владельцем.',
+              style: const TextStyle(
                 fontSize: 12.5,
                 height: 1.35,
                 color: Colors.black54,
@@ -867,8 +1025,16 @@ class _NoSubscribeCommentsHint extends StatelessWidget {
 
 class _CommentTile extends StatelessWidget {
   final Comment c;
+  final bool canDelete;
+  final bool deleting;
+  final VoidCallback? onDelete;
 
-  const _CommentTile({required this.c});
+  const _CommentTile({
+    required this.c,
+    this.canDelete = false,
+    this.deleting = false,
+    this.onDelete,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -891,21 +1057,55 @@ class _CommentTile extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                c.userName,
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                date,
-                style: const TextStyle(
-                  fontSize: 11,
-                  color: Colors.black45,
-                  fontWeight: FontWeight.w600,
-                ),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          c.userName,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          date,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.black45,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (canDelete)
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(
+                        minWidth: 32,
+                        minHeight: 32,
+                      ),
+                      tooltip: 'Удалить комментарий',
+                      onPressed: deleting ? null : onDelete,
+                      icon: deleting
+                          ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                          : const Icon(
+                        Icons.delete_outline,
+                        size: 18,
+                        color: Colors.black45,
+                      ),
+                    ),
+                ],
               ),
               const SizedBox(height: 6),
               _SelfExpandableText(
@@ -972,9 +1172,8 @@ class _SelfExpandableTextState extends State<_SelfExpandableText> {
               t,
               style: widget.textStyle,
               maxLines: _expanded ? null : widget.maxLines,
-              overflow: _expanded
-                  ? TextOverflow.visible
-                  : TextOverflow.ellipsis,
+              overflow:
+              _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
             ),
             if (overflow)
               Padding(
@@ -1107,8 +1306,6 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
     );
   }
 }
-
-/* ===== date formatter ===== */
 
 String _ruDateTime(DateTime dt) {
   const months = [

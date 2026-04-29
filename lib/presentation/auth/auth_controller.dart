@@ -43,7 +43,7 @@ class AuthController extends StateNotifier<AuthState> {
       );
     } on AuthFailure catch (e) {
       state = state.copyWith(isLoading: false, errorMessage: e.message);
-    } catch (e) {
+    } catch (_) {
       state = state.copyWith(isLoading: false, errorMessage: 'Неизвестная ошибка');
     }
   }
@@ -100,7 +100,11 @@ class AuthController extends StateNotifier<AuthState> {
 
     state = state.copyWith(isLoading: true, errorMessage: null);
     try {
-      await _repo.activateEmail(email: email, activationCode: code, method: method);
+      await _repo.activateEmail(
+        email: email,
+        activationCode: code,
+        method: method,
+      );
       state = state.copyWith(
         isLoading: false,
         pendingActivationEmail: null,
@@ -119,8 +123,10 @@ class AuthController extends StateNotifier<AuthState> {
       final normalized = email.trim().toLowerCase();
       await _repo.restoreAccess(email: normalized);
 
-      // ✅ ключевой момент: pending activation с флагом FALSE
-      await _pendingStore.setPending(email: normalized, isAccountActivation: false);
+      await _pendingStore.setPending(
+        email: normalized,
+        isAccountActivation: false,
+      );
 
       state = state.copyWith(
         isLoading: false,
@@ -136,7 +142,14 @@ class AuthController extends StateNotifier<AuthState> {
 
   Future<void> logout() async {
     state = state.copyWith(isLoading: true, errorMessage: null);
-    await _repo.logout();
-    state = AuthState.initial();
+
+    try {
+      await _repo.logout();
+    } catch (_) {
+      // Даже если logout на репозитории упал, все равно чистим локальные хвосты.
+    } finally {
+      await _pendingStore.clear();
+      state = AuthState.initial();
+    }
   }
 }

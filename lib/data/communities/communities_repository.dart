@@ -1,8 +1,7 @@
 import 'package:dio/dio.dart';
-import 'package:vsem_mirom/domain/community_details/community_details.dart';
-
 import '../../domain/auth/auth_failure.dart';
 import '../../domain/communities/communities_repository.dart';
+import '../../domain/communities/community_data_item.dart';
 import '../../domain/communities/community_item.dart';
 import '../../domain/funcs/parseFuncs.dart';
 import '../auth/auth_local_store.dart';
@@ -82,15 +81,18 @@ class APICommunitiesRepository implements CommunitiesRepository {
   }
 
   @override
-  Future<List<CommunityItem>> fetchCommunities({
+  Future<CommunityDataItem> fetchCommunities({
     required int page,
     required int limit,
     required bool my
   }) async {
+    print(page);
+    print(limit);
     final raw = await _local.getToken();
     if (raw == null) throw Exception('Нет user_id: не авторизован');
     final userId = int.tryParse(raw.toString());
     if (userId == null) throw Exception('Некорректный user_id');
+    print(userId);
     final String userIdKey = my? 'user_id': 'my_user_id';
     final data =<String, dynamic>{
       'page': page,
@@ -99,6 +101,7 @@ class APICommunitiesRepository implements CommunitiesRepository {
     };
     final body = await _post('appGetGroups', data);
     final list = body['data'];
+    final totalPages = toInt(body['pagination']['total_pages']);
 
     final parsed = (list is List)
         ? list.whereType<Map>().map((e) {
@@ -106,7 +109,7 @@ class APICommunitiesRepository implements CommunitiesRepository {
       return CommunityItem.fromApiJson(map);
     }).toList()
         : <CommunityItem>[];
-    return parsed;
+    return CommunityDataItem(items: parsed, totalPages: totalPages);
   }
 
   @override

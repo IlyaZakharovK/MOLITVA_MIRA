@@ -33,7 +33,6 @@ class SfuWsClient {
       _incoming.add({'status': 'error', 'msg': 'WS closed'});
     });
 
-    // Ping каждые 25с как в доке/примере
     _pingTimer?.cancel();
     _pingTimer = Timer.periodic(const Duration(seconds: 25), (_) {
       send({'type': 'ping'});

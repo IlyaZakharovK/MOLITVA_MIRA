@@ -135,31 +135,14 @@ class _RequestModerationScreenState extends ConsumerState<RequestModerationScree
                           onReject: statusId == 1
                               ? () async {
                             try {
-                              final res = await showDialog<bool>(
+                              final comment = await showDialog<String?>(
                                 context: context,
                                 barrierDismissible: true,
-                                builder: (ctx) => AlertDialog(
-                                  backgroundColor: Colors.white,
-                                  title: const Text('Модерация молитвы'),
-                                  content: const Text("Вы действительно желаете оклонить эту молитву?"),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () => Navigator.of(ctx).pop(false),
-                                      child: const Text('Нет'),
-                                    ),
-                                    TextButton(
-                                      onPressed: () => Navigator.of(ctx).pop(true),
-                                      style: TextButton.styleFrom(
-                                        foregroundColor: Colors.red,
-                                        textStyle: const TextStyle(fontWeight: FontWeight.w800),
-                                      ),
-                                      child: const Text('Да'),
-                                    ),
-                                  ],
-                                ),
+                                useSafeArea: false,
+                                builder: (ctx) => const _RejectPrayerDialog(),
                               );
-                              if (res == true){
-                                await ctrl.reject(item);
+                              if (comment != null) {
+                                await ctrl.reject(item, comment);
                               }
                             } catch (e) {
                               if (context.mounted) {
@@ -194,6 +177,150 @@ class _RequestModerationScreenState extends ConsumerState<RequestModerationScree
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+}
+
+class _RejectPrayerDialog extends StatefulWidget {
+  const _RejectPrayerDialog();
+
+  @override
+  State<_RejectPrayerDialog> createState() => _RejectPrayerDialogState();
+}
+
+class _RejectPrayerDialogState extends State<_RejectPrayerDialog> {
+  late final TextEditingController _commentCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _commentCtrl = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _commentCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    final keyboard = media.viewInsets.bottom;
+
+    return Material(
+      type: MaterialType.transparency,
+      child: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final availableHeight = (constraints.maxHeight - keyboard - 24)
+                .clamp(240.0, constraints.maxHeight);
+
+            return GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => FocusScope.of(context).unfocus(),
+              child: AnimatedPadding(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOut,
+                padding: EdgeInsets.fromLTRB(18, 24, 18, keyboard + 16),
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: 460,
+                      maxHeight: availableHeight,
+                    ),
+                    child: Material(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(18),
+                      clipBehavior: Clip.antiAlias,
+                      child: SingleChildScrollView(
+                        keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                        padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Модерация молитвы',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+                            const Text(
+                              'Вы действительно желаете отклонить эту молитву?',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                height: 1.35,
+                              ),
+                            ),
+                            const SizedBox(height: 18),
+                            TextField(
+                              controller: _commentCtrl,
+                              maxLength: 1000,
+                              minLines: 3,
+                              maxLines: 6,
+                              textInputAction: TextInputAction.newline,
+                              decoration: InputDecoration(
+                                hintText: 'Комментарий к отклонению',
+                                alignLabelWithHint: true,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 14,
+                                ),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: const BorderSide(
+                                    color: Color(0xFF3F4F86),
+                                  ),
+                                ),
+                                counterStyle: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.black54,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                TextButton(
+                                  onPressed: () => Navigator.of(context).pop(null),
+                                  child: const Text('Отмена'),
+                                ),
+                                const SizedBox(width: 8),
+                                TextButton(
+                                  onPressed: () => Navigator.of(context)
+                                      .pop(_commentCtrl.text.trim()),
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: Colors.red,
+                                    textStyle: const TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                  child: const Text('Отклонить'),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
         ),
       ),
     );

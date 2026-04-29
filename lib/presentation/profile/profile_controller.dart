@@ -46,6 +46,7 @@ class ProfileController extends StateNotifier<AsyncValue<ProfileModel>> {
     try {
       final p = await _repo.load();
       state = AsyncData(p);
+      print(p.role);
     } catch (e, st) {
       // если было что показывать — оставляем старые данные
       if (prev != null) {
@@ -77,7 +78,6 @@ class ProfileController extends StateNotifier<AsyncValue<ProfileModel>> {
       bytes: bytes,
     );
 
-    // сервер может не сразу обновить ссылку/контент -> всё равно пробуем обновить модель
     await refresh();
     return res;
   }

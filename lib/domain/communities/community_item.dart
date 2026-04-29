@@ -5,6 +5,7 @@ class CommunityItem {
   final int type;
   final String invite;
   final int ownerId;
+  final String ownerName;
   final String name;
   final String description;
   final DateTime dateAdd;
@@ -18,6 +19,7 @@ class CommunityItem {
     required this.type,
     required this.invite,
     required this.ownerId,
+    required this.ownerName,
     required this.name,
     required this.description,
     required this.dateAdd,
@@ -32,6 +34,7 @@ class CommunityItem {
     final typeId = toInt(json['type']);
     final invite = toStr(json['invite']);
     final owner = toInt(json['owner_id']);
+    final ownerName = toStr(json['owner_name']);
     final name = toStr(json['name']);
     final desc = toStr(json['description']);
     final date = parseDt(json['date_add']);
@@ -45,6 +48,7 @@ class CommunityItem {
       type: typeId,
       invite: invite,
       ownerId: owner,
+      ownerName: ownerName,
       name: name,
       description: desc,
       dateAdd: date,

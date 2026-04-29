@@ -17,7 +17,10 @@ final streamsRepositoryProvider = Provider<StreamsRepository>((ref) {
   return ApiStreamsRepository(dio: dio, local: local);
 });
 
-final streamsStatusProvider = StateProvider.family<StreamStatus, bool>((ref, my) {
+final streamsStatusProvider = StateProvider.family<StreamStatus, bool>((
+  ref,
+  my,
+) {
   return StreamStatus.active;
 });
 
@@ -80,13 +83,16 @@ class StreamsState {
 typedef StreamsKey = ({bool my, StreamStatus status});
 
 final streamsControllerProvider =
-StateNotifierProvider.family<StreamsController, StreamsState, StreamsKey>((ref, key) {
-  return StreamsController(ref, my: key.my, status: key.status);
-});
+    StateNotifierProvider.family<StreamsController, StreamsState, StreamsKey>((
+      ref,
+      key,
+    ) {
+      return StreamsController(ref, my: key.my, status: key.status);
+    });
 
 class StreamsController extends StateNotifier<StreamsState> {
   StreamsController(this.ref, {required this.my, required this.status})
-      : super(StreamsState.initial()) {
+    : super(StreamsState.initial()) {
     // ВАЖНО: нельзя синхронно менять state при создании провайдера во время build.
     // Делаем отложенный старт.
     Future.microtask(loadInitial);
@@ -97,6 +103,7 @@ class StreamsController extends StateNotifier<StreamsState> {
   final StreamStatus status;
 
   StreamsRepository get _repo => ref.read(streamsRepositoryProvider);
+
   AuthLocalStore get _local => ref.read(authLocalStoreProvider);
 
   UploadRepository get _upload => ref.read(uploadRepositoryProvider);
@@ -120,14 +127,13 @@ class StreamsController extends StateNotifier<StreamsState> {
         my: my,
       );
 
-      final nextFrom = 1 + page.items.length; // offset-логика
-      final hasMore = page.items.length < page.total;
+      final nextFrom = 1 + page.items.length;
+      final hasMore = page.items.length == page.limit;
 
       if (!mounted) return;
       state = state.copyWith(
         isLoading: false,
         items: page.items,
-        total: page.total,
         from: nextFrom,
         hasMore: hasMore,
       );
@@ -152,14 +158,13 @@ class StreamsController extends StateNotifier<StreamsState> {
       );
 
       final merged = [...state.items, ...page.items];
-      final nextFrom = state.from + page.items.length;
-      final hasMore = merged.length < page.total;
+      final nextFrom = merged.length;
+      final hasMore = page.items.length == page.limit;
 
       if (!mounted) return;
       state = state.copyWith(
         isLoadingMore: false,
         items: merged,
-        total: page.total,
         from: nextFrom,
         hasMore: hasMore,
       );
@@ -183,11 +188,10 @@ class StreamsController extends StateNotifier<StreamsState> {
     if (userId == null) throw Exception('Нет user_id: не авторизован');
 
     final translationId = int.tryParse(streamId);
-    if (translationId == null) throw Exception('Некорректный translation_id: $streamId');
+    if (translationId == null)
+      throw Exception('Некорректный translation_id: $streamId');
 
-    final res = await repo.likeTranslation(
-        translationId: translationId
-    );
+    final res = await repo.likeTranslation(translationId: translationId);
 
     // обновим локально count
     final idx = state.items.indexWhere((e) => e.id == streamId);
@@ -195,17 +199,21 @@ class StreamsController extends StateNotifier<StreamsState> {
       final updated = [...state.items];
       final old = updated[idx];
       updated[idx] = StreamItem(
-          id: old.id,
-          title: old.title,
-          description: old.description,
-          participants: old.participants,
-          startAt: old.startAt,
-          endAt: old.endAt,
-          status_id: old.status_id,
-          type_id: old.type_id,
-          image: old.image,
-          likes: res.count,
-          invite: old.invite
+        id: old.id,
+        title: old.title,
+        description: old.description,
+        participants: old.participants,
+        startAt: old.startAt,
+        endAt: old.endAt,
+        statusId: old.statusId,
+        typeId: old.typeId,
+        image: old.image,
+        likes: res.count,
+        isLiked: !old.isLiked,
+        prayText: old.prayText,
+        invite: old.invite,
+        saveMediaTranslation: old.saveMediaTranslation,
+        saveMediaTranslationUrl: old.saveMediaTranslationUrl,
       );
 
       state = state.copyWith(items: updated);
@@ -213,7 +221,6 @@ class StreamsController extends StateNotifier<StreamsState> {
 
     return res.count;
   }
-
 
   /// ==== API: UPLOAD STREAM AVATAR ====
   /// appUploadImg: type=3 (аватар/картинка трансляции), imgId = translation_id
@@ -280,11 +287,15 @@ class StreamsController extends StateNotifier<StreamsState> {
         participants: old.participants,
         startAt: old.startAt,
         endAt: old.endAt,
-        status_id: old.status_id,
-        type_id: old.type_id,
+        statusId: old.statusId,
+        typeId: old.typeId,
         image: nextImage,
         likes: old.likes,
+        isLiked: old.isLiked,
+        prayText: old.prayText,
         invite: old.invite,
+        saveMediaTranslation: old.saveMediaTranslation,
+        saveMediaTranslationUrl: old.saveMediaTranslationUrl,
       );
 
       state = state.copyWith(items: updated);

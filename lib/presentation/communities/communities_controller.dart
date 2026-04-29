@@ -22,14 +22,15 @@ class CommunitiesController extends FamilyAsyncNotifier<CommunitiesState, bool> 
     _repo = ref.watch(communitiesRepositoryProvider);
     _my = my;
 
-    final items = await _repo.fetchCommunities(page: 1, limit: _defaultLimit, my: _my);
+    final data = await _repo.fetchCommunities(page: 1, limit: _defaultLimit, my: _my);
     return CommunitiesState(
-      items: items,
+      items: data.items,
       page: 1,
       limit: _defaultLimit,
-      hasMore: items.length >= _defaultLimit,
+      hasMore: data.items.length >= _defaultLimit,
       isLoadingMore: false,
       pendingSubActions: const {},
+      totalPages: data.totalPages
     );
   }
 
@@ -39,14 +40,15 @@ class CommunitiesController extends FamilyAsyncNotifier<CommunitiesState, bool> 
 
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
-      final items = await _repo.fetchCommunities(page: 1, limit: limit, my: _my);
+      final data = await _repo.fetchCommunities(page: 1, limit: limit, my: _my);
       return (prev ?? const CommunitiesState()).copyWith(
-        items: items,
+        items: data.items,
         page: 1,
         limit: limit,
-        hasMore: items.length >= limit,
+        hasMore: data.items.length >= limit,
         isLoadingMore: false,
         pendingSubActions: const {},
+        totalPages: data.totalPages
       );
     });
   }
@@ -60,15 +62,19 @@ class CommunitiesController extends FamilyAsyncNotifier<CommunitiesState, bool> 
 
     try {
       final nextPage = cur.page + 1;
+      if (nextPage > cur.totalPages){
+        state = AsyncValue.data(cur.copyWith(isLoadingMore: false));
+        return;
+      }
       final next =
       await _repo.fetchCommunities(page: nextPage, limit: cur.limit, my: _my);
-      final merged = [...cur.items, ...next];
+      final merged = [...cur.items, ...next.items];
 
       state = AsyncValue.data(
         cur.copyWith(
           items: merged,
           page: nextPage,
-          hasMore: next.length >= cur.limit,
+          hasMore: next.items.length >= cur.limit,
           isLoadingMore: false,
         ),
       );
@@ -177,6 +183,7 @@ class CommunitiesController extends FamilyAsyncNotifier<CommunitiesState, bool> 
       type: item.type,
       invite: item.invite,
       ownerId: item.ownerId,
+      ownerName: item.ownerName,
       name: item.name,
       description: item.description,
       dateAdd: item.dateAdd,
@@ -196,6 +203,7 @@ class CommunitiesState {
   final int limit;
   final bool hasMore;
   final bool isLoadingMore;
+  final int totalPages;
 
   /// Чтобы не спамили запросами по одному и тому же groupId
   final Set<int> pendingSubActions;
@@ -207,6 +215,7 @@ class CommunitiesState {
     this.hasMore = true,
     this.isLoadingMore = false,
     this.pendingSubActions = const {},
+    this.totalPages = -1
   });
 
   CommunitiesState copyWith({
@@ -216,6 +225,7 @@ class CommunitiesState {
     bool? hasMore,
     bool? isLoadingMore,
     Set<int>? pendingSubActions,
+    int? totalPages
   }) {
     return CommunitiesState(
       items: items ?? this.items,
@@ -224,6 +234,7 @@ class CommunitiesState {
       hasMore: hasMore ?? this.hasMore,
       isLoadingMore: isLoadingMore ?? this.isLoadingMore,
       pendingSubActions: pendingSubActions ?? this.pendingSubActions,
+      totalPages: totalPages ?? this.totalPages
     );
   }
 }

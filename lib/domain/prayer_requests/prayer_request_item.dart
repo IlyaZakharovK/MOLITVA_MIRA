@@ -3,14 +3,12 @@ import 'request_status.dart';
 class PrayerRequestItem {
   final String id;
 
-  /// если true — срочный (как "Как можно скорее")
   final bool isUrgent;
 
-  /// null для срочного "как можно скорее"
   final DateTime? dateTime;
 
   final String fromName;
-  final String categoryOrPrayer; // в макете: "Утренгорящий/Богородице Дево"
+  final String categoryOrPrayer;
   final String text;
 
   final RequestStatus status;

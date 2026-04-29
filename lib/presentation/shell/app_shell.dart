@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../app/app_reset_scope.dart';
 import '../../providers.dart';
 import '../widgets/blue_menu_drawer.dart';
 
@@ -8,7 +9,6 @@ class AppShell extends ConsumerStatefulWidget {
   final bool translation;
   final Widget child;
 
-  /// Контроллер трансляции (у него есть exit()).
   final dynamic ctrl;
 
   const AppShell({
@@ -68,12 +68,10 @@ class _AppShellState extends ConsumerState<AppShell> {
   }
 
   Future<void> _go(BuildContext context, String route) async {
-    // Закрыть drawer, чтобы диалог/навигация не конфликтовали
     if (Navigator.of(context).canPop()) {
       Navigator.of(context).pop();
     }
 
-    // Если и так на этом маршруте — ничего не делаем
     if (ModalRoute.of(context)?.settings.name == route) return;
 
     if (widget.translation) {
@@ -90,6 +88,35 @@ class _AppShellState extends ConsumerState<AppShell> {
     Navigator.of(context).pushReplacementNamed(route);
   }
 
+  void _invalidateAppScopedProviders() {
+    ref.invalidate(authControllerProvider);
+    ref.invalidate(authRepositoryProvider);
+    ref.invalidate(authLocalStoreProvider);
+    ref.invalidate(sessionCookieStoreProvider);
+    ref.invalidate(pendingActivationStoreProvider);
+
+    ref.invalidate(diocesesRepositoryProvider);
+    ref.invalidate(diocesesProvider);
+
+    ref.invalidate(notificationsRepositoryProvider);
+    ref.invalidate(communitiesRepositoryProvider);
+    ref.invalidate(prayerRequestRepositoryProvider);
+    ref.invalidate(prayerRequestRepositoryProvider);
+    ref.invalidate(newsRepositoryProvider);
+    ref.invalidate(communityDetailsRepositoryProvider);
+    ref.invalidate(uploadRepositoryProvider);
+    ref.invalidate(profileRepositoryProvider);
+    ref.invalidate(prayRepositoryProvider);
+    ref.invalidate(helpChatRepositoryProvider);
+    ref.invalidate(registrationManagerProvider);
+  }
+
+  void _clearFlutterCaches() {
+    final cache = PaintingBinding.instance.imageCache;
+    cache.clear();
+    cache.clearLiveImages();
+  }
+
   Future<void> _logout(BuildContext context) async {
     if (Navigator.of(context).canPop()) {
       Navigator.of(context).pop();
@@ -104,14 +131,16 @@ class _AppShellState extends ConsumerState<AppShell> {
     }
 
     await ref.read(authControllerProvider.notifier).logout();
+
+    _clearFlutterCaches();
+
     if (!mounted) return;
-    Navigator.of(context).pushNamedAndRemoveUntil('/', (_) => false);
+    AppResetScope.restartApp(context);
   }
 
   @override
   Widget build(BuildContext context) {
     final currentRoute = ModalRoute.of(context)?.settings.name;
-
     return Scaffold(
       backgroundColor: const Color(0xFFF6F7F9),
       drawer: BlueMenuDrawer(
@@ -124,7 +153,9 @@ class _AppShellState extends ConsumerState<AppShell> {
         onMyCommunities: () => _go(context, '/my_communities'),
         onProfile: () => _go(context, '/profile'),
         onModerate: () => _go(context, '/moderate'),
+        onPrays: () => _go(context, '/prays'),
         onLogout: () => _logout(context),
+        onHelp: () => _go(context, '/help'),
       ),
       body: widget.child,
     );

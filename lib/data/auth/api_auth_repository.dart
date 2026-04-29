@@ -52,7 +52,6 @@ class ApiAuthRepository implements AuthRepository {
   AuthFailure _mapFailure(String description) {
     final d = description.toLowerCase();
     if (d.contains('неверн') || d.contains('парол') || d.contains('email')) {
-      // грубая эвристика
       return const InvalidCredentialsFailure();
     }
     if (d.contains('уже') && (d.contains('зарегистр') || d.contains('существ'))) {
@@ -71,7 +70,6 @@ class ApiAuthRepository implements AuthRepository {
 
     if (token == null) return null;
 
-    // если cookie-jar пустой (например после очистки), восстановим из token
     final jarSession = await _cookies.readSession();
     if (jarSession == null || jarSession.isEmpty) {
       await _cookies.writeSession(token.toString());
@@ -173,11 +171,9 @@ class ApiAuthRepository implements AuthRepository {
         throw _mapFailure(_desc(body));
       }
 
-      // регистрация не логинит. сохраняем email + registered=false
       await _local.setEmail(normalized);
       await _local.setRegistered(false);
 
-      // на всякий случай: токен/сессия чистые
       await _local.setToken(null);
       await _cookies.clear();
       _session = null;

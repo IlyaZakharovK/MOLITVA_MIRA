@@ -16,6 +16,8 @@ class BlueMenuDrawer extends ConsumerWidget {
   final VoidCallback onProfile;
   final VoidCallback onModerate;
   final VoidCallback onLogout;
+  final VoidCallback onPrays;
+  final VoidCallback onHelp;
 
   const BlueMenuDrawer({
     super.key,
@@ -29,6 +31,8 @@ class BlueMenuDrawer extends ConsumerWidget {
     required this.onProfile,
     required this.onModerate,
     required this.onLogout,
+    required this.onPrays,
+    required this.onHelp,
   });
 
   static const _bg = Color(0xFF3F4F86);
@@ -120,6 +124,17 @@ class BlueMenuDrawer extends ConsumerWidget {
                       textActiveColor: _textActive,
                     ),
                   ],
+                  if (role != ProfileRole.admin) ...[
+                    _MenuItem(
+                      title: 'Молитвы',
+                      icon: Icons.shield_outlined,
+                      active: _isActive('/prays'),
+                      onTap: onPrays,
+                      activeColor: _active,
+                      textColor: _text,
+                      textActiveColor: _textActive,
+                    ),
+                  ],
 
                   const SizedBox(height: 10),
                   const Divider(color: Colors.white24, height: 1),
@@ -140,6 +155,16 @@ class BlueMenuDrawer extends ConsumerWidget {
                     icon: Icons.video_library_outlined,
                     active: _isActive('/pray_history'),
                     onTap: onMyStreams,
+                    activeColor: _active,
+                    textColor: _text,
+                    textActiveColor: _textActive,
+                  ),
+
+                  _MenuItem(
+                    title: "Помощь",
+                    icon: Icons.help,
+                    active: _isActive('/help'),
+                    onTap: onHelp,
                     activeColor: _active,
                     textColor: _text,
                     textActiveColor: _textActive,

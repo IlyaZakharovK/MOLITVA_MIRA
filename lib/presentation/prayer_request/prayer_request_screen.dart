@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/cupertino.dart';
 
+import '../../domain/prayer_request/pray_prams.dart';
+import '../../domain/profile/profile_role.dart';
 import '../../domain/streams/stream_status.dart';
 import '../shell/app_shell.dart';
 import '../streams/streams_screen.dart';
@@ -10,10 +12,22 @@ import '../widgets/top_bar.dart';
 import 'prayer_request_controller.dart';
 
 class PrayerRequestScreen extends ConsumerStatefulWidget {
-  const PrayerRequestScreen({super.key});
+  final PrayPrams params;
+
+  const PrayerRequestScreen({
+    super.key,
+    this.params = const PrayPrams(
+      categoryId: -1,
+      categoryName: "-1",
+      prayId: -1,
+      prayName: '-1',
+      prayText: '-1',
+    ),
+  });
 
   @override
-  ConsumerState<PrayerRequestScreen> createState() => _PrayerRequestScreenState();
+  ConsumerState<PrayerRequestScreen> createState() =>
+      _PrayerRequestScreenState();
 }
 
 class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
@@ -23,12 +37,104 @@ class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
   final _descCtrl = TextEditingController();
   final _selfPrayText = TextEditingController();
 
-  int _translationType = 1; // 1-open, 2-closed, 3-family, 4-sos (но sos берём из mode)
+  int _translationType =
+  1; // 1-open, 2-closed, 3-family, 4-sos (но sos берём из mode)
   DateTime? _dateTime;
 
   bool _isSos = false;
 
   final Map<String, String?> _errors = {};
+
+  // ===== Prefill from PraysScreen =====
+  late final PrayPrams _incoming;
+  bool _prefillStarted = false;
+
+  bool get _hasIncomingParams {
+    // default values are -1 / '-1'
+    return (_incoming.categoryId > 0) ||
+        (_incoming.prayId > 0) ||
+        (_incoming.prayText.isNotEmpty && _incoming.prayText != '-1') ||
+        (_incoming.categoryName.isNotEmpty && _incoming.categoryName != '-1') ||
+        (_incoming.prayName.isNotEmpty && _incoming.prayName != '-1');
+  }
+
+  int? get _incomingCategoryId =>
+      _incoming.categoryId > 0 ? _incoming.categoryId : null;
+
+  int? get _incomingPrayId => _incoming.prayId > 0 ? _incoming.prayId : null;
+
+  String? get _incomingCategoryName =>
+      (_incoming.categoryName.isNotEmpty && _incoming.categoryName != '-1')
+          ? _incoming.categoryName
+          : null;
+
+  String? get _incomingPrayName =>
+      (_incoming.prayName.isNotEmpty && _incoming.prayName != '-1')
+          ? _incoming.prayName
+          : null;
+
+  String? get _incomingPrayText =>
+      (_incoming.prayText.isNotEmpty && _incoming.prayText != '-1')
+          ? _incoming.prayText
+          : null;
+
+  String _resolveCategoryName(PrayerRequestState st, int? id) {
+    if (id == null) return '-- Не выбрано --';
+    for (final c in st.categories) {
+      if (c.id == id) return c.name;
+    }
+    if (id == _incomingCategoryId && _incomingCategoryName != null) {
+      return _incomingCategoryName!;
+    }
+    return '-- Не выбрано --';
+  }
+
+  String _resolvePrayerName(PrayerRequestState st, int? id) {
+    if (id == null) return '--выберите молитву--';
+    for (final p in st.prayers) {
+      if (p.id == id) return p.name;
+    }
+    if (id == _incomingPrayId && _incomingPrayName != null) {
+      return _incomingPrayName!;
+    }
+    return '--выберите молитву--';
+  }
+
+  Future<void> _applyIncomingPrefill() async {
+    if (_prefillStarted) return;
+    _prefillStarted = true;
+
+    if (!_hasIncomingParams) return;
+
+    final ctrl = ref.read(prayerRequestControllerProvider.notifier);
+
+    // 1) Prefill category (loads prayers list)
+    final catId = _incomingCategoryId;
+    if (catId != null) {
+      try {
+        await ctrl.selectCategory(catId);
+      } catch (_) {}
+    }
+
+    // 2) Prefill prayer (wait until prayers loaded)
+    final prayId = _incomingPrayId;
+    if (prayId != null) {
+      for (var i = 0; i < 25; i++) {
+        final st = ref.read(prayerRequestControllerProvider);
+        final ready =
+            !st.prayersLoading && st.prayers.any((p) => p.id == prayId);
+        if (ready) break;
+        await Future.delayed(const Duration(milliseconds: 120));
+      }
+
+      final st2 = ref.read(prayerRequestControllerProvider);
+      if (!st2.prayersLoading && st2.prayers.any((p) => p.id == prayId)) {
+        try {
+          ctrl.selectPrayer(prayId);
+        } catch (_) {}
+      }
+    }
+  }
 
   static const _kName = 'name';
   static const _kDesc = 'desc';
@@ -165,7 +271,10 @@ class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
                         isDense: true,
                         filled: true,
                         fillColor: const Color(0xFFF6F7F9),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 12,
+                        ),
                         enabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(10),
                           borderSide: const BorderSide(color: Colors.black26),
@@ -186,7 +295,9 @@ class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
                         final q = ctrl.text.trim().toLowerCase();
                         final filtered = q.isEmpty
                             ? items
-                            : items.where((e) => e.$2.toLowerCase().contains(q)).toList();
+                            : items
+                            .where((e) => e.$2.toLowerCase().contains(q))
+                            .toList();
 
                         return ListView.separated(
                           controller: scrollCtrl,
@@ -200,10 +311,16 @@ class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
                             return ListTile(
                               title: Text(
                                 name,
-                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                               trailing: selected
-                                  ? const Icon(Icons.check, color: Color(0xFF3F4F86))
+                                  ? const Icon(
+                                Icons.check,
+                                color: Color(0xFF3F4F86),
+                              )
                                   : null,
                               onTap: () => Navigator.of(ctx).pop(id),
                             );
@@ -219,6 +336,18 @@ class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
         );
       },
     );
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _incoming = widget.params;
+
+    // Prefill category/prayer if они переданы из списка молитв
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _applyIncomingPrefill();
+    });
   }
 
   @override
@@ -263,7 +392,13 @@ class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
     if (time == null) return;
 
     setState(() {
-      _dateTime = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+      _dateTime = DateTime(
+        date.year,
+        date.month,
+        date.day,
+        time.hour,
+        time.minute,
+      );
       _clearField(_kDateTime);
     });
   }
@@ -295,7 +430,10 @@ class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
                       onPressed: () => Navigator.of(ctx).pop(null),
                       child: Text(
                         'Отмена',
-                        style: TextStyle(color: accent, fontWeight: FontWeight.w800),
+                        style: TextStyle(
+                          color: accent,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                     ),
                     const Spacer(),
@@ -308,7 +446,10 @@ class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
                       ),
                       child: Text(
                         'Готово',
-                        style: TextStyle(color: accent, fontWeight: FontWeight.w800),
+                        style: TextStyle(
+                          color: accent,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                     ),
                   ],
@@ -339,17 +480,26 @@ class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
     final ctrl = ref.read(prayerRequestControllerProvider.notifier);
 
     // ошибки из controller → showAppMessageBar
-    ref.listen(
-      prayerRequestControllerProvider.select((s) => s.errorMessage),
-          (prev, next) {
-        if (!context.mounted) return;
-        if (next != null && next.isNotEmpty && next != prev) {
-          showAppMessageBar(context, next);
-        }
-      },
-    );
+    ref.listen(prayerRequestControllerProvider.select((s) => s.errorMessage), (
+        prev,
+        next,
+        ) {
+      if (!context.mounted) return;
+      if (next != null && next.isNotEmpty && next != prev) {
+        showAppMessageBar(context, next);
+      }
+    });
 
     final sosColor = const Color(0xFFFF6B6B);
+    final canUseSelfPrayer =
+        st.role != ProfileRole.layman || st.canBlass;
+
+    // Используем переданные параметры как "fallback", пока контроллер не догрузил списки.
+    final effectiveCategoryId = st.categoryId ?? _incomingCategoryId;
+    final effectivePrayerId = st.prayerId ?? _incomingPrayId;
+    final effectivePrayerText = st.prayerText.isNotEmpty
+        ? st.prayerText
+        : (_incomingPrayText ?? '');
 
     return AppShell(
       child: SafeArea(
@@ -379,7 +529,9 @@ class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
 
                             showAppMessageBar(
                               context,
-                              _isSos ? 'SOS режим включён' : 'SOS режим выключен',
+                              _isSos
+                                  ? 'SOS режим включён'
+                                  : 'SOS режим выключен',
                             );
                           },
                           child: Container(
@@ -442,16 +594,19 @@ class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
                               child: LinearProgressIndicator(minHeight: 2),
                             ),
                           _InkField(
-                            value: st.categoryId == null
-                                ? '-- Не выбрано --'
-                                : (st.categories.firstWhere((c) => c.id == st.categoryId).name),
+                            value: _resolveCategoryName(
+                              st,
+                              effectiveCategoryId,
+                            ),
                             enabled: !st.categoriesLoading,
                             error: _errors[_kCategory],
                             onTap: () async {
                               final picked = await _pickFromSearchSheet(
                                 title: 'Выберите категорию',
-                                items: st.categories.map((c) => (c.id, c.name)).toList(),
-                                selectedId: st.categoryId,
+                                items: st.categories
+                                    .map((c) => (c.id, c.name))
+                                    .toList(),
+                                selectedId: effectiveCategoryId,
                               );
                               if (picked == null) return;
                               await ctrl.selectCategory(picked);
@@ -510,16 +665,19 @@ class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
                                 child: LinearProgressIndicator(minHeight: 2),
                               ),
                             _InkField(
-                              value: st.categoryId == null
-                                  ? '-- Не выбрано --'
-                                  : (st.categories.firstWhere((c) => c.id == st.categoryId).name),
+                              value: _resolveCategoryName(
+                                st,
+                                effectiveCategoryId,
+                              ),
                               enabled: !st.categoriesLoading,
                               error: _errors[_kCategory],
                               onTap: () async {
                                 final picked = await _pickFromSearchSheet(
                                   title: 'Выберите категорию',
-                                  items: st.categories.map((c) => (c.id, c.name)).toList(),
-                                  selectedId: st.categoryId,
+                                  items: st.categories
+                                      .map((c) => (c.id, c.name))
+                                      .toList(),
+                                  selectedId: effectiveCategoryId,
                                 );
                                 if (picked == null) return;
                                 await ctrl.selectCategory(picked);
@@ -538,20 +696,28 @@ class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
                               ),
 
                             _InkField(
-                              value: st.categoryId == null
+                              value: effectiveCategoryId == null
                                   ? '--выберите категорию--'
-                                  : (st.prayerId == null
+                                  : (effectivePrayerId == null
                                   ? '--выберите молитву--'
-                                  : (st.prayers.firstWhere((p) => p.id == st.prayerId).name)),
-                              enabled: st.categoryId != null && !st.prayersLoading,
+                                  : _resolvePrayerName(
+                                st,
+                                effectivePrayerId,
+                              )),
+                              enabled:
+                              effectiveCategoryId != null &&
+                                  !st.prayersLoading &&
+                                  st.prayers.isNotEmpty,
                               error: _errors[_kPrayer],
                               onTap: () async {
-                                if (st.categoryId == null) return;
+                                if (effectiveCategoryId == null) return;
 
                                 final picked = await _pickFromSearchSheet(
                                   title: 'Выберите молитву',
-                                  items: st.prayers.map((p) => (p.id, p.name)).toList(),
-                                  selectedId: st.prayerId,
+                                  items: st.prayers
+                                      .map((p) => (p.id, p.name))
+                                      .toList(),
+                                  selectedId: effectivePrayerId,
                                 );
                                 if (picked == null) return;
                                 ctrl.selectPrayer(picked);
@@ -559,26 +725,28 @@ class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
                               },
                             ),
 
-                            Row(
-                              children: [
-                                Checkbox(
-                                  value: st.selfPray,
-                                  onChanged: (v) {
-                                    ctrl.setSelfPray(v ?? false);
-                                    if (!(v ?? false)) _clearField(_kSelfText);
-                                  },
-                                  activeColor: Colors.black87,
-                                ),
-                                const Text(
-                                  'Своя молитва',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.black54,
+                            if (canUseSelfPrayer) ...[
+                              Row(
+                                children: [
+                                  Checkbox(
+                                    value: st.selfPray,
+                                    onChanged: (v) {
+                                      ctrl.setSelfPray(v ?? false);
+                                      if (!(v ?? false)) _clearField(_kSelfText);
+                                    },
+                                    activeColor: Colors.black87,
                                   ),
-                                ),
-                              ],
-                            ),
+                                  const Text(
+                                    'Своя молитва',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.black54,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
 
                             const _Label('Текст молитвы'),
                             Container(
@@ -594,9 +762,9 @@ class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
                                 thumbVisibility: true,
                                 child: SingleChildScrollView(
                                   child: Text(
-                                    st.prayerText.isEmpty
+                                    effectivePrayerText.isEmpty
                                         ? 'Выберите молитву — здесь появится текст'
-                                        : st.prayerText,
+                                        : effectivePrayerText,
                                     style: const TextStyle(
                                       fontSize: 13,
                                       height: 1.35,
@@ -622,23 +790,25 @@ class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
                               error: _errors[_kSelfText],
                               onChanged: (_) => _clearField(_kSelfText),
                             ),
-                            Row(
-                              children: [
-                                Checkbox(
-                                  value: st.selfPray,
-                                  onChanged: (v) => ctrl.setSelfPray(v ?? false),
-                                  activeColor: Colors.black87,
-                                ),
-                                const Text(
-                                  'Своя молитва',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.black54,
+                            if (canUseSelfPrayer)
+                              Row(
+                                children: [
+                                  Checkbox(
+                                    value: st.selfPray,
+                                    onChanged: (v) =>
+                                        ctrl.setSelfPray(v ?? false),
+                                    activeColor: Colors.black87,
                                   ),
-                                ),
-                              ],
-                            ),
+                                  const Text(
+                                    'Своя молитва',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.black54,
+                                    ),
+                                  ),
+                                ],
+                              ),
                           ],
                         ),
                       ),
@@ -655,7 +825,8 @@ class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
                             contentPadding: EdgeInsets.zero,
                             value: 1,
                             groupValue: _translationType,
-                            onChanged: (v) => setState(() => _translationType = v ?? 1),
+                            onChanged: (v) =>
+                                setState(() => _translationType = v ?? 1),
                             title: const Text('Открытая молитва'),
                             activeColor: Colors.black87,
                           ),
@@ -663,18 +834,20 @@ class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
                             contentPadding: EdgeInsets.zero,
                             value: 2,
                             groupValue: _translationType,
-                            onChanged: (v) => setState(() => _translationType = v ?? 2),
+                            onChanged: (v) =>
+                                setState(() => _translationType = v ?? 2),
                             title: const Text('Закрытая молитва'),
                             activeColor: Colors.black87,
                           ),
-                          RadioListTile<int>(
-                            contentPadding: EdgeInsets.zero,
-                            value: 3,
-                            groupValue: _translationType,
-                            onChanged: (v) => setState(() => _translationType = v ?? 3),
-                            title: const Text('Семейная молитва'),
-                            activeColor: Colors.black87,
-                          ),
+                          // RadioListTile<int>(
+                          //   contentPadding: EdgeInsets.zero,
+                          //   value: 3,
+                          //   groupValue: _translationType,
+                          //   onChanged: (v) =>
+                          //       setState(() => _translationType = v ?? 3),
+                          //   title: const Text('Семейная молитва'),
+                          //   activeColor: Colors.black87,
+                          // ),
                           const SizedBox(height: 8),
 
                           _DateTimeField(
@@ -700,7 +873,10 @@ class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10),
                         ),
-                        textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                        textStyle: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                       onPressed: st.isSubmitting
                           ? null
@@ -722,13 +898,18 @@ class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
                               _errors.clear();
                             });
 
+                            final bool target = ProfileRole.layman == st.role;
+
+                            print(target);
+                            print(st.role);
+
                             Navigator.of(context).pushReplacement(
-                                MaterialPageRoute(
-                                  builder: (_) => StreamsScreen(
-                                    my: true,
-                                    initialStatus: StreamStatus.planned,
-                                  ),
+                              MaterialPageRoute(
+                                builder: (_) => StreamsScreen(
+                                  my: true,
+                                  initialStatus: target ? StreamStatus.planned : StreamStatus.active,
                                 ),
+                              ),
                             );
                             return;
                           }
@@ -744,15 +925,17 @@ class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
 
                           if (!mounted) return;
 
-// ✅ решаем, какой таб открыть в "Мои трансляции"
+                          // ✅ решаем, какой таб открыть в "Мои трансляции"
                           final now = DateTime.now();
                           final planned = _dateTime!;
                           final targetStatus =
-                          planned.isAfter(now.add(const Duration(minutes: 1)))
+                          planned.isAfter(
+                            now.add(const Duration(seconds: 30)),
+                          )
                               ? StreamStatus.planned
                               : StreamStatus.active;
 
-// ✅ перенаправляем в "Мои трансляции" и открываем нужный раздел
+                          // ✅ перенаправляем в "Мои трансляции" и открываем нужный раздел
                           Navigator.of(context).pushReplacement(
                             MaterialPageRoute(
                               builder: (_) => StreamsScreen(
@@ -769,7 +952,10 @@ class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
                           ? const SizedBox(
                         width: 18,
                         height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
                       )
                           : Text(_isSos ? 'Отправить SOS' : 'Создать заявку'),
                     ),
@@ -786,6 +972,7 @@ class _PrayerRequestScreenState extends ConsumerState<PrayerRequestScreen> {
 
 class _Card extends StatelessWidget {
   final Widget child;
+
   const _Card({required this.child});
 
   @override
@@ -810,6 +997,7 @@ class _Card extends StatelessWidget {
 
 class _Label extends StatelessWidget {
   final String text;
+
   const _Label(this.text);
 
   @override
@@ -854,7 +1042,10 @@ class _TextArea extends StatelessWidget {
         isDense: true,
         filled: true,
         fillColor: Colors.white,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 12,
+        ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
           borderSide: BorderSide(color: hasError ? Colors.red : Colors.black26),

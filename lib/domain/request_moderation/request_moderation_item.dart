@@ -1,9 +1,9 @@
 class RequestModerationItem {
   final int id;
-  final int statusId; // 1 new, 2 blessed, 3 rejected
-  final int typeId; // 4 => SOS
-  final String title; // "SOS – срочная трансляция"
-  final String message; // текст под заголовком
+  final int statusId;
+  final int typeId;
+  final String title;
+  final String message;
 
   final String authorName;
   final String categoryName;
@@ -31,12 +31,9 @@ class RequestModerationItem {
     if (v == null) return DateTime.fromMillisecondsSinceEpoch(0);
     if (v is DateTime) return v;
     final s = v.toString().trim();
-    // ожидаем что-то типа "29.01.2026 18:44" или ISO
-    // пробуем ISO
     final iso = DateTime.tryParse(s);
     if (iso != null) return iso;
 
-    // пробуем dd.MM.yyyy HH:mm
     try {
       final parts = s.split(' ');
       final d = parts[0].split('.');

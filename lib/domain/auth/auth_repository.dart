@@ -1,10 +1,8 @@
 import 'user_session.dart';
 
 abstract class AuthRepository {
-  /// Восстановление сессии/статуса из хранилища при старте приложения
   Future<UserSession?> restoreSession();
 
-  /// Если пользователь зарегистрировался, но не подтвердил email — вернём email
   Future<String?> restorePendingActivationEmail();
 
   Future<UserSession> login({
@@ -37,6 +35,5 @@ abstract class AuthRepository {
 
   Future<void> logout();
 
-  /// null если не залогинен
   UserSession? get currentSession;
 }

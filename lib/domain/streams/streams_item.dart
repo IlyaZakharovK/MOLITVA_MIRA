@@ -1,37 +1,35 @@
 import 'package:vsem_mirom/domain/streams/stream_status_id.dart';
 import 'package:vsem_mirom/domain/streams/stream_type.dart';
 
-import 'stream_status.dart';
+import 'package:vsem_mirom/domain/funcs/parseFuncs.dart';
 
 class StreamItem {
   final String id;
 
-  /// Название трансляции
   final String title;
 
-  /// Короткое описание
   final String description;
 
-  /// Кол-во участников
   final int participants;
 
-  /// Время начала (date_planned)
   final DateTime startAt;
 
   final DateTime endAt;
 
-  /// Статус id (1..4)
-  final StreamStatusID status_id;
+  final StreamStatusID statusId;
 
   final String image;
 
-  /// Тип (1..4)
-  final StreamType type_id;
+  final StreamType typeId;
 
   final int likes;
+  final bool isLiked;
 
-  /// invite-код (есть только для некоторых типов)
+  final String prayText;
+
   final String invite;
+  final bool saveMediaTranslation;
+  final String saveMediaTranslationUrl;
 
   const StreamItem({
     required this.id,
@@ -41,37 +39,26 @@ class StreamItem {
     required this.startAt,
     required this.endAt,
     required this.invite,
-    required this.status_id,
-    required this.type_id,
+    required this.statusId,
+    required this.typeId,
     required this.image,
     required this.likes,
+    required this.isLiked,
+    required this.prayText,
+    required this.saveMediaTranslation,
+    required this.saveMediaTranslationUrl,
   });
 
   factory StreamItem.fromApiJson(Map<String, dynamic> json) {
-    String toStr(dynamic v) => (v ?? '').toString();
-
-    int toInt(dynamic v, [int def = 0]) {
-      if (v == null) return def;
-      if (v is int) return v;
-      if (v is num) return v.toInt();
-      return int.tryParse(v.toString()) ?? def;
-    }
-
-    DateTime parseDt(dynamic v) {
-      final s = toStr(v).trim();
-      if (s.isEmpty) return DateTime.now();
-      final iso = s.contains('T') ? s : s.replaceFirst(' ', 'T');
-      return DateTime.tryParse(iso) ?? DateTime.now();
-    }
-
-    final statusStr = toStr(json['status']);
-    final st = StreamStatusApiX.fromApi(statusStr);
-
     final typeId = toInt(json['type']);
     final type = StreamTypeIDApiX.fromApi(typeId);
 
     final statusId = toInt(json['status_id']);
     final status = StreamStatusIDApiX.fromApi(statusId);
+    final saveMediaTranslation = toBool(json['saveMediaTranslation']);
+    final saveMediaTranslationUrl = saveMediaTranslation
+        ? toStr(json['saveMediaTranslationUrl'])
+        : '0';
 
     return StreamItem(
       id: toStr(json['id']),
@@ -80,11 +67,15 @@ class StreamItem {
       participants: toInt(json['participants']),
       startAt: parseDt(json['date_planned']),
       endAt: parseDt(json['date_end']),
-      type_id: type,
-      status_id: status,
+      typeId: type,
+      statusId: status,
       image: toStr(json['logo_url']),
-      likes: toInt(json['likes']),
+      likes: toInt(json['likes_count']),
+      isLiked: toBool(json['is_subscribed']),
+      prayText: toStr(json['prayer_text']),
       invite: toStr(json['invite']).trim(),
+      saveMediaTranslation: saveMediaTranslation,
+      saveMediaTranslationUrl: saveMediaTranslationUrl,
     );
   }
 }

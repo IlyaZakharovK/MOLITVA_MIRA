@@ -3,6 +3,8 @@ import 'package:dio/dio.dart';
 import '../../domain/request_moderation/request_moderation_item.dart';
 import '../../domain/request_moderation/request_moderation_repository.dart';
 
+final statuses = ['status1', 'status2', 'status3'];
+
 class ApiRequestModerationRepository implements RequestModerationRepository {
   final Dio dio;
   final String apiPass;
@@ -41,17 +43,16 @@ class ApiRequestModerationRepository implements RequestModerationRepository {
 
   @override
   Future<List<RequestModerationItem>> fetch({
-    required int statusId,
     required int page,
     required int limit,
+    required int statusId
   }) async {
     final map = await _post('appRequestModeration', {
-      "status_id": statusId,
       "page": page,
       "limit": limit,
     });
 
-    final data = map['data'];
+    final data = map['data'][statuses[statusId-1]];
     if (data is! List) return [];
 
     return data
@@ -75,12 +76,12 @@ class ApiRequestModerationRepository implements RequestModerationRepository {
   }
 
   @override
-  Future<String> reject(int requestId) async {
+  Future<String> reject({required int requestId, String comment = ''}) async {
     final map = await _post('appTranslationModeration', {
       "translation_id": requestId,
+      "decline_reason": comment,
       "status_id": 3,
     });
-    print(map);
     return map['description'];
   }
 }

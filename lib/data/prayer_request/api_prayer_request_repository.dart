@@ -77,7 +77,7 @@ class ApiPrayerRequestRepository implements PrayerRequestRepository {
     required bool prayerOptional,
     required String prayerOptionalText,
   }) async {
-    final userId = await _local.getToken(); // у тебя возвращает int?
+    final userId = await _local.getToken();
     if (userId == null) throw Exception('Не найден user_id (не авторизован)');
 
     final payload = <String, dynamic>{
@@ -90,7 +90,6 @@ class ApiPrayerRequestRepository implements PrayerRequestRepository {
       'user_id': userId,
     };
 
-    // если своя молитва — эти поля должны быть None -> мы их НЕ отправляем вообще
     if (!prayerOptional) {
       payload['prayers_category_id'] = prayersCategoryId;
       payload['prayers_texts_id'] = prayersTextId;

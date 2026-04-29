@@ -1,4 +1,7 @@
 import 'package:dio/dio.dart';
+import 'package:vsem_mirom/domain/funcs/parseFuncs.dart';
+
+import '../../domain/profile/profile_role.dart';
 
 class LiveTranslation {
   final int id;
@@ -9,16 +12,13 @@ class LiveTranslation {
   final String name;
   final String description;
 
-  // SFU fields
   final int roomId;
   final String listenerPin;
   final String speakerPin;
 
-  // TURN
   final String coturnUser;
   final String coturnPass;
 
-  // Prayer fields
   final int prayer_optional;
   final String prayer_optional_text;
   final int prayers_category_id;
@@ -73,13 +73,52 @@ class LiveTranslation {
   }
 }
 
-/// ===== Presence DTO =====
+enum TranslationUserModerationAction {
+  none,
+  ban,
+  allowSpeak,
+  forbidSpeak,
+}
+
+extension TranslationUserModerationActionX on TranslationUserModerationAction {
+  String get title {
+    switch (this) {
+      case TranslationUserModerationAction.none:
+        return 'Ничего не делать';
+      case TranslationUserModerationAction.ban:
+        return 'Забанить на трансляции';
+      case TranslationUserModerationAction.allowSpeak:
+        return 'Разрешить вещание';
+      case TranslationUserModerationAction.forbidSpeak:
+        return 'Запретить вещание';
+    }
+  }
+}
+
+class PresenceBanException implements Exception {
+  final String message;
+  final bool ban;
+
+  const PresenceBanException(this.message, {this.ban = true});
+
+  @override
+  String toString() => message;
+}
 
 class OnlineUser {
   final int id;
   final String name;
+  final ProfileRole role;
+  final bool ban;
+  final bool speak;
 
-  OnlineUser({required this.id, required this.name});
+  const OnlineUser({
+    required this.id,
+    required this.name,
+    required this.role,
+    required this.ban,
+    required this.speak,
+  });
 
   static int _toInt(dynamic v) {
     if (v is num) return v.toInt();
@@ -88,10 +127,37 @@ class OnlineUser {
 
   static String _toStr(dynamic v) => (v ?? '').toString();
 
+  static ProfileRole _parseRole(dynamic raw) {
+    final index = _toInt(raw) - 1;
+    if (index >= 0 && index < ProfileRole.values.length) {
+      return ProfileRole.values[index];
+    }
+    return ProfileRole.layman;
+  }
+
+  OnlineUser copyWith({
+    int? id,
+    String? name,
+    ProfileRole? role,
+    bool? ban,
+    bool? speak,
+  }) {
+    return OnlineUser(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      role: role ?? this.role,
+      ban: ban ?? this.ban,
+      speak: speak ?? this.speak,
+    );
+  }
+
   factory OnlineUser.fromApi(Map<String, dynamic> j) {
     return OnlineUser(
       id: _toInt(j['id']),
       name: _toStr(j['name']),
+      role: _parseRole(j['type_id']),
+      ban: toBool(j['ban']),
+      speak: toBool(j['speak']),
     );
   }
 }
@@ -100,7 +166,10 @@ class OnlineInfo {
   final int countOnline;
   final List<OnlineUser> users;
 
-  OnlineInfo({required this.countOnline, required this.users});
+  const OnlineInfo({
+    required this.countOnline,
+    required this.users,
+  });
 
   static int _toInt(dynamic v) {
     if (v is num) return v.toInt();
@@ -108,7 +177,6 @@ class OnlineInfo {
   }
 
   factory OnlineInfo.fromApi(Map<String, dynamic> body) {
-    // сервер может вернуть count_online в корне
     final count = _toInt(body['count_online']);
 
     final usersRaw = body['users'];
@@ -121,7 +189,10 @@ class OnlineInfo {
       }
     }
 
-    return OnlineInfo(countOnline: count, users: users);
+    return OnlineInfo(
+      countOnline: count,
+      users: users,
+    );
   }
 }
 
@@ -138,6 +209,9 @@ class LiveTranslationRepository {
     return s == 'success' || s == 'ok';
   }
 
+  String _desc(Map<String, dynamic> body) =>
+      (body['description'] ?? body['msg'] ?? 'Ошибка').toString();
+
   Future<LiveTranslation> fetchById(int translationId) async {
     final resp = await _dio.post(
       '',
@@ -150,15 +224,14 @@ class LiveTranslationRepository {
     );
 
     final body = resp.data;
-    print(body['data'][0] is Map);
     if (body is! Map) throw Exception('Некорректный ответ сервера');
 
-    final status = body['status'];
-    if (!_isOkStatus(status)) {
-      throw Exception((body['description'] ?? 'Ошибка').toString());
+    final map = Map<String, dynamic>.from(body);
+    if (!_isOkStatus(map['status'])) {
+      throw Exception(_desc(map));
     }
 
-    final data = body['data'][0];
+    final data = map['data'][0];
     if (data is! Map) throw Exception('В ответе нет data by id');
 
     return LiveTranslation.fromApi(Map<String, dynamic>.from(data));
@@ -178,19 +251,43 @@ class LiveTranslationRepository {
     final body = resp.data;
     if (body is! Map) throw Exception('Некорректный ответ сервера');
 
-    final status = body['status'];
-    if (!_isOkStatus(status)) {
-      throw Exception((body['description'] ?? 'Ошибка').toString());
+    final map = Map<String, dynamic>.from(body);
+    if (!_isOkStatus(map['status'])) {
+      throw Exception(_desc(map));
     }
 
-    final data = body['data'];
+    final data = map['data'];
     if (data is! Map) throw Exception('В ответе нет data');
 
     return LiveTranslation.fromApi(Map<String, dynamic>.from(data));
   }
 
-  /// ✅ Опрос присутствия на трансляции (каждые 15 сек)
-  /// method: appUserOnlineInTranslation
+  Future<void> stopTranslation({
+    required int translationId,
+    required int userId,
+  }) async {
+    final resp = await _dio.post(
+      '',
+      data: <String, dynamic>{
+        'type': _type,
+        'pass': _pass,
+        'method': 'appStopTranslation',
+        'data': <String, dynamic>{
+          'translation_id': translationId,
+          'user_id': userId,
+        },
+      },
+    );
+
+    final body = resp.data;
+    if (body is! Map) throw Exception('Некорректный ответ сервера');
+
+    final map = Map<String, dynamic>.from(body);
+    if (!_isOkStatus(map['status'])) {
+      throw Exception(_desc(map));
+    }
+  }
+
   Future<OnlineInfo> appUserOnlineInTranslation({
     required int translationId,
     required int userId,
@@ -210,23 +307,77 @@ class LiveTranslationRepository {
 
     final body = resp.data;
     if (body is! Map) throw Exception('Некорректный ответ сервера');
-    print(body);
 
-    final status = body['status'];
-    if (!_isOkStatus(status)) {
-      throw Exception((body['description'] ?? 'Ошибка').toString());
+    final root = Map<String, dynamic>.from(body);
+    if (!_isOkStatus(root['status'])) {
+      final rootBan = toBool(root['ban']);
+      final dataBan = root['data'] is Map
+          ? toBool((root['data'] as Map)['ban'])
+          : false;
+
+      if (rootBan || dataBan) {
+        throw PresenceBanException(_desc(root));
+      }
+
+      throw Exception(_desc(root));
     }
 
-    // Ответ у тебя приходит в корне: count_online/users — не в data
-    // Но на всякий случай поддержим оба варианта
-    final root = Map<String, dynamic>.from(body);
-    final data = body['data'];
+    final data = root['data'];
     if (data is Map) {
-      // иногда сервер может класть внутрь data
-      final merged = <String, dynamic>{...root, ...Map<String, dynamic>.from(data)};
+      final merged = <String, dynamic>{
+        ...root,
+        ...Map<String, dynamic>.from(data),
+      };
       return OnlineInfo.fromApi(merged);
     }
 
     return OnlineInfo.fromApi(root);
+  }
+
+  Future<void> moderateUserInTranslation({
+    required int translationId,
+    required int actorUserId,
+    required int targetUserId,
+    required TranslationUserModerationAction action,
+  }) async {
+    if (action == TranslationUserModerationAction.none) return;
+
+    final int actionType;
+    switch (action) {
+      case TranslationUserModerationAction.ban:
+        actionType = 1;
+        break;
+      case TranslationUserModerationAction.allowSpeak:
+        actionType = 2;
+        break;
+      case TranslationUserModerationAction.forbidSpeak:
+        actionType = 3;
+        break;
+      case TranslationUserModerationAction.none:
+        return;
+    }
+
+    final resp = await _dio.post(
+      '',
+      data: <String, dynamic>{
+        'type': _type,
+        'pass': _pass,
+        'method': "appChatModerateUsers",
+        'data': <String, dynamic>{
+          'translation_id': translationId,
+          'my_user_id': actorUserId,
+          'user_id': targetUserId,
+          "type_action": actionType
+        },
+      },
+    );
+
+    final body = resp.data;
+    if (body is! Map) throw Exception('Некорректный ответ сервера');
+
+    final map = Map<String, dynamic>.from(body);
+    if (!_isOkStatus(map['status'])) {
+      throw Exception(_desc(map));
+    }
   }
 }

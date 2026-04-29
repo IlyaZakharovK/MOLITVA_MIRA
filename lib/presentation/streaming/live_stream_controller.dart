@@ -1,4 +1,3 @@
-// live_stream_controller.dart
 import 'dart:async';
 
 import 'package:dio/dio.dart';
@@ -20,13 +19,42 @@ final liveTranslationRepositoryProvider = Provider<LiveTranslationRepository>((
   return LiveTranslationRepository(dio);
 });
 
-/// Только 2 режима: звук включен / выключен
-enum AudioOutputMode { on, muted }
+enum AudioOutputMode { muted, ear }
 
 extension AudioOutputModeX on AudioOutputMode {
-  String get label => this == AudioOutputMode.on ? 'Звук' : 'Без звука';
+  String get label {
+    switch (this) {
+      case AudioOutputMode.muted:
+        return 'Без звука';
+      case AudioOutputMode.ear:
+        return 'Звук включён';
+    }
+  }
+
+  bool get isAudible => this != AudioOutputMode.muted;
 }
 
+enum AudioOutputRoute { earpiece, speaker }
+
+extension AudioOutputRouteX on AudioOutputRoute {
+  String get label {
+    switch (this) {
+      case AudioOutputRoute.earpiece:
+        return 'Фронтальный динамик';
+      case AudioOutputRoute.speaker:
+        return 'Динамик устройства';
+    }
+  }
+
+  String get description {
+    switch (this) {
+      case AudioOutputRoute.earpiece:
+        return 'Звук будет воспроизводиться через разговорный динамик';
+      case AudioOutputRoute.speaker:
+        return 'Звук будет воспроизводиться через основной внешний динамик';
+    }
+  }
+}
 
 /// Сообщение чата трансляции (API: appGetChatMessagesTranslation / appStartChatAutoUpdate)
 class LiveChatMessage {
@@ -71,12 +99,19 @@ class LiveStreamState {
 
   final LiveTranslation? translation;
   final int? localUserId;
+  final ProfileRole? localRole;
+
+  /// Исторически используется как "может говорить"
   final bool isOwner;
+
+  final bool canModerateUsers;
+  final String? forcedExitMessage;
 
   final bool wsConnected;
   final bool rtcConnected;
 
   final AudioOutputMode audioMode;
+  final AudioOutputRoute preferredAudioRoute;
 
   /// mic enabled (только owner)
   final bool micOn;
@@ -100,7 +135,7 @@ class LiveStreamState {
   final String status;
 
   final int participantsCount;
-  final List<String> participants;
+  final List<OnlineUser> participants;
 
   /// На WEB нужен первый клик для autoplay
   final bool needsUserGestureToPlay;
@@ -113,7 +148,6 @@ class LiveStreamState {
   final String prayerText;
   final String? prayerTextError;
 
-  // ===== Chat =====
   final bool chatLoading;
   final bool chatSending;
   final String? chatError;
@@ -126,10 +160,14 @@ class LiveStreamState {
     required this.error,
     required this.translation,
     required this.localUserId,
+    required this.localRole,
     required this.isOwner,
+    required this.canModerateUsers,
+    required this.forcedExitMessage,
     required this.wsConnected,
     required this.rtcConnected,
     required this.audioMode,
+    required this.preferredAudioRoute,
     required this.micOn,
     required this.metronomeOn,
     required this.remoteStream,
@@ -157,10 +195,14 @@ class LiveStreamState {
     error: null,
     translation: null,
     localUserId: null,
+    localRole: null,
     isOwner: false,
+    canModerateUsers: false,
+    forcedExitMessage: null,
     wsConnected: false,
     rtcConnected: false,
     audioMode: AudioOutputMode.muted,
+    preferredAudioRoute: AudioOutputRoute.earpiece,
     micOn: false,
     metronomeOn: false,
     remoteStream: null,
@@ -179,7 +221,7 @@ class LiveStreamState {
     chatSending: false,
     chatError: null,
     chatEmpty: false,
-    chatMessages: const [],
+    chatMessages: [],
     lastChatMessageId: 0,
   );
 
@@ -189,10 +231,15 @@ class LiveStreamState {
     bool clearError = false,
     LiveTranslation? translation,
     int? localUserId,
+    ProfileRole? localRole,
     bool? isOwner,
+    bool? canModerateUsers,
+    String? forcedExitMessage,
+    bool clearForcedExitMessage = false,
     bool? wsConnected,
     bool? rtcConnected,
     AudioOutputMode? audioMode,
+    AudioOutputRoute? preferredAudioRoute,
     bool? micOn,
     bool? metronomeOn,
     MediaStream? remoteStream,
@@ -201,14 +248,13 @@ class LiveStreamState {
     double? speakingLevel,
     String? status,
     int? participantsCount,
-    List<String>? participants,
+    List<OnlineUser>? participants,
     bool? needsUserGestureToPlay,
     bool? metronomeAvailable,
     bool? prayerTextLoading,
     String? prayerText,
     String? prayerTextError,
     bool clearPrayerTextError = false,
-
     bool? chatLoading,
     bool? chatSending,
     String? chatError,
@@ -222,10 +268,16 @@ class LiveStreamState {
       error: clearError ? null : (error ?? this.error),
       translation: translation ?? this.translation,
       localUserId: localUserId ?? this.localUserId,
+      localRole: localRole ?? this.localRole,
       isOwner: isOwner ?? this.isOwner,
+      canModerateUsers: canModerateUsers ?? this.canModerateUsers,
+      forcedExitMessage: clearForcedExitMessage
+          ? null
+          : (forcedExitMessage ?? this.forcedExitMessage),
       wsConnected: wsConnected ?? this.wsConnected,
       rtcConnected: rtcConnected ?? this.rtcConnected,
       audioMode: audioMode ?? this.audioMode,
+      preferredAudioRoute: preferredAudioRoute ?? this.preferredAudioRoute,
       micOn: micOn ?? this.micOn,
       metronomeOn: metronomeOn ?? this.metronomeOn,
       remoteStream: remoteStream ?? this.remoteStream,
@@ -243,7 +295,6 @@ class LiveStreamState {
       prayerTextError: clearPrayerTextError
           ? null
           : (prayerTextError ?? this.prayerTextError),
-
       chatLoading: chatLoading ?? this.chatLoading,
       chatSending: chatSending ?? this.chatSending,
       chatError: clearChatError ? null : (chatError ?? this.chatError),
@@ -334,6 +385,8 @@ class LiveStreamController extends StateNotifier<LiveStreamState> {
 
 
   static const String _wsUrl = 'wss://media.molitvamira.ru/ws';
+  static const String _bannedDialogMessage =
+      'Вы были забанены на данной трансляции.';
 
   void _log(String msg) {
     debugPrint('[LIVE] $msg');
@@ -341,16 +394,87 @@ class LiveStreamController extends StateNotifier<LiveStreamState> {
     state = state.copyWith(status: msg);
   }
 
+  bool _hasPrivilegedRole(ProfileRole? role) {
+    return role == ProfileRole.clergy ||
+        role == ProfileRole.temple ||
+        role == ProfileRole.admin;
+  }
+
+  OnlineUser? _findUserById(List<OnlineUser> users, int? userId) {
+    if (userId == null || userId <= 0) return null;
+    for (final user in users) {
+      if (user.id == userId) return user;
+    }
+    return null;
+  }
+
+  bool _resolveCanSpeak({
+    required LiveTranslation tr,
+    required int? localUserId,
+    required ProfileRole? localRole,
+    required List<OnlineUser> onlineUsers,
+  }) {
+    final byOwner = localUserId != null && localUserId == tr.ownerId;
+    final byRole = _hasPrivilegedRole(localRole);
+    final me = _findUserById(onlineUsers, localUserId);
+    final byPresence = me?.speak == true;
+    return byOwner || byRole || byPresence;
+  }
+
+  bool _resolveCanModerate({
+    required LiveTranslation tr,
+    required int? localUserId,
+    required ProfileRole? localRole,
+  }) {
+    final byOwner = localUserId == tr.ownerId;
+    final byRole = _hasPrivilegedRole(localRole);
+    return byOwner || byRole;
+  }
+
+  void clearForcedExitMessage() {
+    if (!mounted) return;
+    state = state.copyWith(clearForcedExitMessage: true);
+  }
+
+  Future<void> _handleBan() async {
+    if (!mounted) return;
+
+    try {
+      _micTrack?.enabled = false;
+    } catch (_) {}
+
+    state = state.copyWith(
+      isLoading: false,
+      clearError: true,
+      forcedExitMessage: _bannedDialogMessage,
+      status: _bannedDialogMessage,
+      isOwner: false,
+      micOn: false,
+      audioMode: AudioOutputMode.muted,
+      metronomeOn: false,
+      speaking: false,
+      speakingLevel: 0,
+    );
+
+    await _dispose(updateState: false);
+  }
+
   // ---------------- Presence ----------------
 
-  void _startPresenceLoop({required int userId, required int translationId}) {
+  void _startPresenceLoop({
+    required int userId,
+    required int translationId,
+    bool pingImmediately = true,
+  }) {
     _stopPresenceLoop();
 
-    // Первый запрос сразу
-    unawaited(_pingPresence(userId: userId, translationId: translationId));
+    if (pingImmediately) {
+      unawaited(_pingPresence(userId: userId, translationId: translationId));
+    }
 
-    // Чат: первичная загрузка + далее автодогрузка
-    unawaited(_ensureChatInitialized(userId: userId, translationId: translationId));
+    unawaited(
+      _ensureChatInitialized(userId: userId, translationId: translationId),
+    );
 
     _presenceTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       unawaited(_pingPresence(userId: userId, translationId: translationId));
@@ -376,8 +500,8 @@ class LiveStreamController extends StateNotifier<LiveStreamState> {
   }) async {
     if (!mounted) return;
     if (userId <= 0 || translationId <= 0) return;
-
     if (_presenceInFlight) return;
+
     _presenceInFlight = true;
 
     try {
@@ -386,26 +510,42 @@ class LiveStreamController extends StateNotifier<LiveStreamState> {
         userId: userId,
       );
 
-      debugPrint(
-        '[LIVE][PRESENCE] ok count=${info.countOnline} users=${info.users.length}',
-      );
-
       if (!mounted) return;
 
-      final names = info.users.map((u) => u.name).toList(growable: false);
+      final tr = state.translation;
+      final nextCanSpeak = tr == null
+          ? state.isOwner
+          : _resolveCanSpeak(
+        tr: tr,
+        localUserId: userId,
+        localRole: state.localRole,
+        onlineUsers: info.users,
+      );
+
+      final prevCanSpeak = state.isOwner;
 
       state = state.copyWith(
         participantsCount: info.countOnline,
-        participants: names,
+        participants: info.users,
+        isOwner: nextCanSpeak,
       );
+
+      if (tr != null && prevCanSpeak != nextCanSpeak && state.wsConnected) {
+        _log(
+          nextCanSpeak
+              ? 'Вам выдали право говорить. Переподключаемся…'
+              : 'Право говорить снято. Переподключаемся…',
+        );
+        unawaited(refresh());
+      }
+    } on PresenceBanException {
+      await _handleBan();
     } catch (e) {
       debugPrint('[LIVE][PRESENCE] error: $e');
     } finally {
       _presenceInFlight = false;
     }
   }
-
-
 
   // ---------------- Chat API + polling ----------------
 
@@ -935,7 +1075,6 @@ class LiveStreamController extends StateNotifier<LiveStreamState> {
 
   Future<void> _init() async {
     try {
-      // сбрасываем чат при каждой инициализации/перезаходе
       _chatInitialized = false;
       _chatInFlight = false;
       _chatKnownIds.clear();
@@ -943,13 +1082,13 @@ class LiveStreamController extends StateNotifier<LiveStreamState> {
       state = state.copyWith(
         isLoading: true,
         clearError: true,
+        clearForcedExitMessage: true,
         status: 'Загрузка трансляции…',
       );
 
       final token = await _local.getToken();
       final localUserId = token == null ? null : int.tryParse(token.toString());
 
-      // ✅ Определяем роль пользователя
       ProfileRole? role;
       if (localUserId != null && localUserId > 0) {
         try {
@@ -961,39 +1100,59 @@ class LiveStreamController extends StateNotifier<LiveStreamState> {
         }
       }
 
-      final canSpeakByRole =
-          role == ProfileRole.clergy ||
-              role == ProfileRole.temple ||
-              role == ProfileRole.admin;
+      final tr = streamData.invited
+          ? await _repo.fetchByInvite(streamData.invite)
+          : await _repo.fetchById(streamData.id);
 
-      final tr = streamData.invited ? await _repo.fetchByInvite(streamData.invite) : await _repo.fetchById(streamData.id);
-      debugPrint(tr.name + "получил трансу");
+      OnlineInfo initialOnline = const OnlineInfo(countOnline: 0, users: []);
 
-      // ✅ Подмена понятия isOwner = "может говорить"
-      final isOwner =
-          (localUserId != null && localUserId == tr.ownerId) || canSpeakByRole;
+      if (localUserId != null && localUserId > 0) {
+        initialOnline = await _repo.appUserOnlineInTranslation(
+          translationId: tr.id,
+          userId: localUserId,
+        );
+      }
+
+      final canSpeak = _resolveCanSpeak(
+        tr: tr,
+        localUserId: localUserId,
+        localRole: role,
+        onlineUsers: initialOnline.users,
+      );
+
+      final canModerateUsers = _resolveCanModerate(
+        tr: tr,
+        localUserId: localUserId,
+        localRole: role,
+      );
 
       state = state.copyWith(
         isLoading: false,
         translation: tr,
         localUserId: localUserId,
-        isOwner: isOwner,
-        participantsCount: 0,
-        participants: const [],
+        localRole: role,
+        isOwner: canSpeak,
+        canModerateUsers: canModerateUsers,
+        participantsCount: initialOnline.countOnline,
+        participants: initialOnline.users,
         status: 'Данные трансляции получены',
       );
 
-      // ✅ ВОССТАНОВИЛИ: запускаем опрос присутствия
       if (localUserId != null && localUserId > 0) {
-        _startPresenceLoop(userId: localUserId, translationId: tr.id);
+        _startPresenceLoop(
+          userId: localUserId,
+          translationId: tr.id,
+          pingImmediately: false,
+        );
       }
 
       unawaited(_resolvePrayerText(tr));
 
-      await _connectWsAndJoin(tr: tr, isOwner: isOwner);
-      await _setupWebRtcAndNegotiate(tr: tr, isOwner: isOwner);
-
+      await _connectWsAndJoin(tr: tr, isOwner: canSpeak);
+      await _setupWebRtcAndNegotiate(tr: tr, isOwner: canSpeak);
       await _applyAudioModeToTracks();
+    } on PresenceBanException {
+      await _handleBan();
     } catch (e) {
       if (!mounted) return;
       state = state.copyWith(
@@ -1004,6 +1163,39 @@ class LiveStreamController extends StateNotifier<LiveStreamState> {
     }
   }
 
+  Future<void> moderateParticipant({
+    required OnlineUser target,
+    required TranslationUserModerationAction action,
+  }) async {
+    if (action == TranslationUserModerationAction.none) return;
+
+    final tr = state.translation;
+    final actorId = state.localUserId;
+
+    if (tr == null) throw Exception('Трансляция не загружена');
+    if (actorId == null || actorId <= 0) {
+      throw Exception('Не найден локальный пользователь');
+    }
+    if (!state.canModerateUsers) {
+      throw Exception('Недостаточно прав');
+    }
+    if (target.role != ProfileRole.layman) {
+      throw Exception('Изменять можно только layman');
+    }
+    if (target.id == tr.ownerId) {
+      throw Exception('Нельзя изменять владельца трансляции');
+    }
+
+    await _repo.moderateUserInTranslation(
+      translationId: tr.id,
+      actorUserId: actorId,
+      targetUserId: target.id,
+      action: action,
+    );
+
+    await _pingPresence(userId: actorId, translationId: tr.id);
+  }
+
   Future<void> refresh() async {
     await _dispose(updateState: false);
     if (!mounted) return;
@@ -1011,8 +1203,33 @@ class LiveStreamController extends StateNotifier<LiveStreamState> {
     await _init();
   }
 
+  Future<void> _applyAudioRoute() async {
+    try {
+      if (WebRTC.platformIsIOS) {
+        await Helper.ensureAudioSession();
+        await Helper.setAppleAudioConfiguration(
+          AppleAudioConfiguration(
+            appleAudioCategory: AppleAudioCategory.playAndRecord,
+            appleAudioMode: AppleAudioMode.voiceChat,
+          ),
+        );
+      }
+
+      switch (state.preferredAudioRoute) {
+        case AudioOutputRoute.earpiece:
+          await Helper.setSpeakerphoneOn(false);
+          break;
+        case AudioOutputRoute.speaker:
+          await Helper.setSpeakerphoneOn(true);
+          break;
+      }
+    } catch (e) {
+      debugPrint('[LIVE][AUDIO] failed to apply route: $e');
+    }
+  }
+
   Future<void> _applyAudioModeToTracks() async {
-    final enable = state.audioMode == AudioOutputMode.on;
+    final enable = state.audioMode.isAudible;
 
     try {
       final rs = state.remoteStream;
@@ -1031,9 +1248,11 @@ class LiveStreamController extends StateNotifier<LiveStreamState> {
         }
       }
     } catch (_) {}
+
+    await _applyAudioRoute();
   }
 
-  bool get _soundOn => state.audioMode == AudioOutputMode.on;
+  bool get _audioEnabled => state.audioMode.isAudible;
 
   Future<void> _connectWsAndJoin({
     required LiveTranslation tr,
@@ -1062,9 +1281,9 @@ class LiveStreamController extends StateNotifier<LiveStreamState> {
           if (msg['offerMtr'] != null) {
             _lastOfferMtrSdp = msg['offerMtr'].toString();
             if (mounted) {
-              state = state.copyWith(metronomeAvailable: _soundOn);
+              state = state.copyWith(metronomeAvailable: _audioEnabled);
             }
-            if (state.metronomeOn && _soundOn) {
+            if (state.metronomeOn && _audioEnabled) {
               await _setupMetronomeIfNeeded(
                 tr: tr,
                 offerSdp: _lastOfferMtrSdp!,
@@ -1115,10 +1334,10 @@ class LiveStreamController extends StateNotifier<LiveStreamState> {
           _lastOfferMtrSdp = sdp;
 
           if (mounted) {
-            state = state.copyWith(metronomeAvailable: _soundOn);
+            state = state.copyWith(metronomeAvailable: _audioEnabled);
           }
 
-          if (state.metronomeOn && _soundOn) {
+          if (state.metronomeOn && _audioEnabled) {
             await _setupMetronomeIfNeeded(tr: tr, offerSdp: sdp);
           }
         }
@@ -1299,7 +1518,7 @@ class LiveStreamController extends StateNotifier<LiveStreamState> {
     required String offerSdp,
   }) async {
     if (_mtrPc != null) return;
-    if (!_soundOn) return;
+    if (!_audioEnabled) return;
 
     _log('MTR: setup…');
 
@@ -1369,8 +1588,23 @@ class LiveStreamController extends StateNotifier<LiveStreamState> {
 
   // ===== UI actions =====
 
+  Future<void> selectAudioRoute(AudioOutputRoute route) async {
+    if (!mounted) return;
+
+    state = state.copyWith(preferredAudioRoute: route);
+
+    if (_audioEnabled) {
+      await _applyAudioRoute();
+    }
+
+    _log('AUDIO ROUTE: ${route.label}');
+  }
+
   Future<void> toggleSound() async {
-    final next = _soundOn ? AudioOutputMode.muted : AudioOutputMode.on;
+    final next = switch (state.audioMode) {
+      AudioOutputMode.muted => AudioOutputMode.ear,
+      AudioOutputMode.ear => AudioOutputMode.muted,
+    };
 
     if (!mounted) return;
     state = state.copyWith(audioMode: next);
@@ -1402,7 +1636,7 @@ class LiveStreamController extends StateNotifier<LiveStreamState> {
     final tr = state.translation;
     if (tr == null) return;
 
-    if (!_soundOn) {
+    if (!_audioEnabled) {
       _log('Метроном недоступен: звук выключен');
       return;
     }
@@ -1455,6 +1689,35 @@ class LiveStreamController extends StateNotifier<LiveStreamState> {
 
   Future<void> exit() async => _dispose(updateState: false);
 
+  Future<void> stopTranslation() async {
+    final tr = state.translation;
+    final localUserId = state.localUserId;
+
+    if (tr == null) {
+      throw Exception('Трансляция не загружена');
+    }
+    if (localUserId == null || localUserId <= 0) {
+      throw Exception('Не найден локальный пользователь');
+    }
+    if (tr.ownerId != localUserId) {
+      throw Exception('Останавливать трансляцию может только её создатель');
+    }
+
+    if (mounted) {
+      state = state.copyWith(
+        clearError: true,
+        status: 'Остановка трансляции…',
+      );
+    }
+
+    await _repo.stopTranslation(
+      translationId: tr.id,
+      userId: localUserId,
+    );
+
+    await _dispose(updateState: false);
+  }
+
   void _onProviderDispose() {
     unawaited(_dispose(updateState: false));
   }
@@ -1473,6 +1736,8 @@ class LiveStreamController extends StateNotifier<LiveStreamState> {
         state = state.copyWith(
           wsConnected: false,
           rtcConnected: false,
+          audioMode: AudioOutputMode.muted,
+          micOn: false,
           remoteStream: null,
           metronomeStream: null,
           metronomeOn: false,
@@ -1543,6 +1808,10 @@ class LiveStreamController extends StateNotifier<LiveStreamState> {
         await _pc?.close();
       } catch (_) {}
       _pc = null;
+
+      try {
+        await Helper.clearAndroidCommunicationDevice();
+      } catch (_) {}
 
       _audioTransceiver = null;
       _pendingIce.clear();

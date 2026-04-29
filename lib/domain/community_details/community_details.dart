@@ -15,6 +15,7 @@ class Group {
   final bool isOwner;
   final String invite;
   final bool isClose;
+  final bool allowComments;
 
   const Group({
     required this.id,
@@ -31,6 +32,7 @@ class Group {
     required this.isOwner,
     required this.invite,
     required this.isClose,
+    required this.allowComments,
   });
 
   factory Group.fromAPI(Map<String, dynamic> json) {
@@ -63,6 +65,7 @@ class Group {
       isOwner: isOwner,
       invite: invite,
       isClose: isClose,
+      allowComments: toBool(json['allow_comments'])
     );
   }
 }

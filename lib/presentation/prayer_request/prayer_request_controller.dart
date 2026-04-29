@@ -5,6 +5,8 @@ import '../../domain/prayer_request/prayer_category.dart';
 import '../../domain/prayer_request/prayer_text.dart';
 import '../../domain/prayer_request/prayer_request_repository.dart';
 import '../../domain/prayer_request/prayer_request_mode.dart';
+import '../../domain/profile/profile_repository.dart';
+import '../../domain/profile/profile_role.dart';
 import '../../providers.dart';
 
 class _Keep {
@@ -36,6 +38,8 @@ class PrayerRequestState {
   final String prayerText;
 
   final bool selfPray;
+  final ProfileRole role;
+  final bool canBlass;
 
   final String? errorMessage;
 
@@ -50,20 +54,26 @@ class PrayerRequestState {
     required this.prayerText,
     required this.selfPray,
     required this.errorMessage,
+    required this.role,
+    required this.canBlass,
   });
 
-  factory PrayerRequestState.initial() => const PrayerRequestState(
-    isSubmitting: false,
-    categoriesLoading: false,
-    categories: [],
-    prayersLoading: false,
-    prayers: [],
-    categoryId: null,
-    prayerId: null,
-    prayerText: '',
-    selfPray: false,
-    errorMessage: null,
-  );
+  factory PrayerRequestState.initial() {
+    return PrayerRequestState(
+      isSubmitting: false,
+      categoriesLoading: false,
+      categories: [],
+      prayersLoading: false,
+      prayers: [],
+      categoryId: null,
+      prayerId: null,
+      prayerText: '',
+      selfPray: false,
+      errorMessage: null,
+      role: ProfileRole.layman,
+      canBlass: false,
+    );
+  }
 
   PrayerRequestState copyWith({
     bool? isSubmitting,
@@ -77,6 +87,8 @@ class PrayerRequestState {
     bool? selfPray,
     String? errorMessage,
     bool clearError = false,
+    ProfileRole? role,
+    bool? canBlass,
   }) {
     final nextCategoryId =
     categoryId == _keep ? this.categoryId : categoryId as int?;
@@ -93,6 +105,8 @@ class PrayerRequestState {
       prayerText: prayerText ?? this.prayerText,
       selfPray: selfPray ?? this.selfPray,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
+      role: role ?? this.role,
+      canBlass: canBlass ?? this.canBlass,
     );
   }
 }
@@ -105,7 +119,7 @@ class PrayerRequestController extends StateNotifier<PrayerRequestState> {
   final Ref ref;
 
   PrayerRequestRepository get _repo => ref.read(prayerRequestRepositoryProvider);
-  AuthLocalStore get _local => ref.read(authLocalStoreProvider);
+  ProfileRepository get _profile => ref.read(profileRepositoryProvider);
 
   int? _asInt(dynamic v) {
     if (v == null) return null;
@@ -121,9 +135,12 @@ class PrayerRequestController extends StateNotifier<PrayerRequestState> {
     state = state.copyWith(categoriesLoading: true, clearError: true);
     try {
       final cats = await _repo.getCategories();
+      final user = await _profile.load();
       state = state.copyWith(
         categoriesLoading: false,
         categories: cats,
+        role: user.role,
+        canBlass: user.canBlass,
       );
     } catch (e) {
       state = state.copyWith(
@@ -194,19 +211,19 @@ class PrayerRequestController extends StateNotifier<PrayerRequestState> {
     if (value) {
       state = state.copyWith(
         selfPray: true,
-        categoryId: null,
-        prayerId: null,
-        prayers: const [],
-        prayerText: '',
+        categoryId: state.categoryId,
+        prayerId: state.prayerId,
+        prayers: state.prayers,
+        prayerText: state.prayerText,
         clearError: true,
       );
     } else {
       state = state.copyWith(
         selfPray: false,
-        categoryId: null,
-        prayerId: null,
-        prayers: const [],
-        prayerText: '',
+        categoryId: state.categoryId,
+        prayerId: state.prayerId,
+        prayers: state.prayers,
+        prayerText: state.prayerText,
         clearError: true,
       );
     }
@@ -263,8 +280,12 @@ class PrayerRequestController extends StateNotifier<PrayerRequestState> {
         prayerOptional: false,
         prayerOptionalText: '',
       );
-
-      state = state.copyWith(isSubmitting: false);
+      final user = await _profile.load();
+      state = state.copyWith(
+        isSubmitting: false,
+        role: user.role,
+        canBlass: user.canBlass,
+      );
     } catch (e) {
       state = state.copyWith(isSubmitting: false, errorMessage: e.toString());
       rethrow;

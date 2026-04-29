@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:vsem_mirom/domain/community_details/community_details.dart';
+import 'package:vsem_mirom/domain/funcs/parseFuncs.dart';
 
 import '../../domain/auth/auth_failure.dart';
 import '../../domain/community_details/community_details_repository.dart';
@@ -73,7 +74,6 @@ class APICommunityDetailsRepository implements CommunityDetailsRepository {
   Future<Community> fetchCommunityByInvite({required String invite}) async {
     final post = <String, dynamic>{'invite': invite};
     final body = await _post('appGetGroupByInvite', post);
-    print('Вызвали fetchCommunityByInvite');
     final data = body['data'];
     final map = _stringKeyedMap(data);
     return fetchCommunity(id: map['id']);
@@ -105,6 +105,40 @@ class APICommunityDetailsRepository implements CommunityDetailsRepository {
         : <Post>[];
     return parsed;
   }
+
+  @override
+  Future<bool> allUnAll({ required int groupId }) async {
+    final raw = await _local.getToken();
+    if (raw == null) throw Exception('Нет user_id: не авторизован');
+    final userId = int.tryParse(raw.toString());
+    if (userId == null) throw Exception('Некорректный user_id');
+    final post = <String, dynamic> {
+      "user_id": userId,
+      "group_id": groupId
+    };
+    final body = await _post('appGroupCommmentsAccess', post);
+    return toBool(body['allow_comments']);
+  }
+
+  @override
+  Future<void> deleteComment({
+    required int groupId,
+    required int postId,
+    required int commentId,
+}) async {
+    final raw = await _local.getToken();
+    if (raw == null) throw Exception('Нет user_id: не авторизован');
+    final userId = int.tryParse(raw.toString());
+    if (userId == null) throw Exception('Некорректный user_id');
+    final post = <String, dynamic> {
+      "comment_id": commentId,
+      "post_id": postId,
+      "group_id": groupId,
+      "user_id": userId
+    };
+    await _post('appGroupCommmentDelete', post);
+    return;
+}
 
   @override
   Future<bool> subUnSub({

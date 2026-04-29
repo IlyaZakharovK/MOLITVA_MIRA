@@ -8,10 +8,6 @@ class UploadRepository {
 
   UploadRepository(this._dio, );
 
-  /// type: 1 user avatar, 2 community avatar, 3 translation avatar
-  /// imgId: id user/community/translation
-  ///
-  /// Возвращаем сырое тело ответа, чтобы ты мог посмотреть, что реально прилетает.
   Future<Map<String, dynamic>> uploadImageBase64({
     required int type,
     required int imgId,

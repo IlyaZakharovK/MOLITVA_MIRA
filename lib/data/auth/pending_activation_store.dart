@@ -12,7 +12,7 @@ class PendingActivationStore {
   final FlutterSecureStorage _storage;
 
   static const _kEmail = 'pending_activation_email';
-  static const _kIsAccount = 'pending_activation_is_account'; // "1"/"0"
+  static const _kIsAccount = 'pending_activation_is_account';
 
   Future<void> setPending({
     required String email,

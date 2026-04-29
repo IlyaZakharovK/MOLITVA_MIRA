@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../data/streams/api_streams_repository.dart';
 import '../../domain/streams/stream_type.dart';
 import '../../domain/streams/streams_item.dart';
 import '../../helper/image_helper.dart';
@@ -15,22 +14,27 @@ import 'app_message_bar.dart';
 import 'package:vsem_mirom/domain/streams/stream_status.dart';
 import 'package:vsem_mirom/domain/streams/stream_status_id.dart';
 
-final _likedProvider = StateProvider.family<bool, String>((ref, id) => false);
-final _likesCountProvider = StateProvider.family<int?, String>(
-      (ref, id) => null,
-);
+import 'audio_player.dart';
+
 final _likeBusyProvider = StateProvider.family<bool, String>(
       (ref, id) => false,
 );
 
-final _avatarBusyProvider = StateProvider.family<bool, String>((ref, id) => false);
+final _avatarBusyProvider = StateProvider.family<bool, String>(
+      (ref, id) => false,
+);
 
 class StreamCard extends ConsumerWidget {
   final StreamItem item;
   final bool my;
   final StreamStatus status;
 
-  const StreamCard({super.key, required this.item, required this.my, required this.status});
+  const StreamCard({
+    super.key,
+    required this.item,
+    required this.my,
+    required this.status,
+  });
 
   static const _blue = Color(0xFF2F66FF);
 
@@ -66,7 +70,7 @@ class StreamCard extends ConsumerWidget {
   }
 
   void _onOpen(BuildContext context) {
-    switch (item.status_id) {
+    switch (item.statusId) {
       case StreamStatusID.blocked:
         showAppMessageBar(context, 'Трансляция заблокирована');
         return;
@@ -94,12 +98,14 @@ class StreamCard extends ConsumerWidget {
 
     Navigator.of(context).pushReplacementNamed(
       '/live_stream',
-      arguments: {"translationID": item.id, 'invited': false},
+      arguments: {'translationID': item.id, 'invited': false},
     );
   }
 
   Future<void> _onShareInvite(BuildContext context) async {
-    final invite = item.invite.isEmpty ? item.id.toString().trim() : item.invite.toString().trim();
+    final invite = item.invite.isEmpty
+        ? item.id.toString().trim()
+        : item.invite.toString().trim();
     debugPrint(invite);
     if (invite.isEmpty) {
       showAppMessageBar(
@@ -110,9 +116,9 @@ class StreamCard extends ConsumerWidget {
       return;
     }
 
-    final link = item.invite.isEmpty ?
-    'https://molitvamira.ru/translations/?id=${Uri.encodeComponent(invite)}' :
-    'https://molitvamira.ru/translations/?invite=${Uri.encodeComponent(invite)}';
+    final link = item.invite.isEmpty
+        ? 'https://molitvamira.ru/translations/?id=${Uri.encodeComponent(invite)}'
+        : 'https://molitvamira.ru/translations/?invite=${Uri.encodeComponent(invite)}';
     await Clipboard.setData(ClipboardData(text: link));
 
     await showDialog<bool>(
@@ -121,7 +127,9 @@ class StreamCard extends ConsumerWidget {
       builder: (ctx) => AlertDialog(
         backgroundColor: Colors.white,
         title: const Text('Приглашение'),
-        content: const Text('Пригласительная ссылка скопирована в буфер. Теперь Вы можете ее отправить другому участнику.'),
+        content: const Text(
+          'Пригласительная ссылка скопирована в буфер. Теперь Вы можете ее отправить другому участнику.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -132,57 +140,127 @@ class StreamCard extends ConsumerWidget {
     );
   }
 
+  Future<void> _showPrayerTextDialog(BuildContext context) async {
+    final prayText = item.prayText.trim();
+    if (prayText.isEmpty) {
+      showAppMessageBar(context, 'Текст молитвы отсутствует');
+      return;
+    }
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 520),
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 22),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF3F3F3),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'Текст молитвы',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF4A4F57),
+                        ),
+                      ),
+                    ),
+                    InkWell(
+                      borderRadius: BorderRadius.circular(20),
+                      onTap: () => Navigator.of(ctx).pop(),
+                      child: const Padding(
+                        padding: EdgeInsets.all(2),
+                        child: Icon(
+                          Icons.close,
+                          size: 24,
+                          color: Color(0xFF7A7F87),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Text(
+                      prayText,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        height: 1.4,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF34373D),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: SizedBox(
+                    height: 36,
+                    child: FilledButton(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF495D9B),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 18),
+                        textStyle: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      onPressed: () => Navigator.of(ctx).pop(),
+                      child: const Text('Закрыть'),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final liked = ref.watch(_likedProvider(item.id));
+    final liked = item.isLiked;
     final busy = ref.watch(_likeBusyProvider(item.id));
-    final likesOverride = ref.watch(_likesCountProvider(item.id));
-    final likesCount = likesOverride ?? item.likes;
+    final likesCount = item.likes;
 
     final canShareInvite =
-        (status == StreamStatus.active ||
-            status == StreamStatus.planned) && my;
+        (status == StreamStatus.active || status == StreamStatus.planned) && my;
 
     final isPlanned = status == StreamStatus.planned;
     final isCompleted = status != StreamStatus.active && !isPlanned;
     final dateToShow = isCompleted ? item.endAt : item.startAt;
 
-    final bool isSos = item.type_id == StreamType.sos;
-    final bool isModeration = item.status_id == StreamStatusID.moderated;
+    final bool isSos = item.typeId == StreamType.sos;
+    final bool isModeration = item.statusId == StreamStatusID.moderated;
+    final bool showPlannedPrayerRow = status == StreamStatus.planned;
 
     Future<void> onLikeToggle() async {
       if (busy) return;
 
-      final beforeCount = likesCount;
-      final beforeLiked = liked;
-
       ref.read(_likeBusyProvider(item.id).notifier).state = true;
       try {
-        final repo = ref.read(streamsRepositoryProvider);
-        if (repo is! ApiStreamsRepository) {
-          throw Exception('StreamsRepository не поддерживает likeTranslation');
-        }
-
-        final res = await repo.likeTranslation(
-          translationId: int.parse(item.id),
-        );
-
-        final afterCount = res.count;
-
-        // обновляем счётчик всегда
-        ref.read(_likesCountProvider(item.id).notifier).state = afterCount;
-
-        // определяем состояние лайка по изменению count
-        bool nextLiked = beforeLiked;
-        if (afterCount > beforeCount) {
-          nextLiked = true; // лайк поставили
-        } else if (afterCount < beforeCount) {
-          nextLiked = false; // лайк убрали
-        } else {
-          nextLiked = beforeLiked;
-        }
-
-        ref.read(_likedProvider(item.id).notifier).state = nextLiked;
+        await ref
+            .read(streamsControllerProvider((my: my, status: status)).notifier)
+            .likeTranslation(item.id);
       } catch (e) {
         showAppMessageBar(context, e.toString());
       } finally {
@@ -190,10 +268,35 @@ class StreamCard extends ConsumerWidget {
       }
     }
 
-
     final avatarBusy = ref.watch(_avatarBusyProvider(item.id));
-    final canEditAvatar = my && (status == StreamStatus.active || status == StreamStatus.planned);
+    final canEditAvatar =
+        my && (status == StreamStatus.active || status == StreamStatus.planned);
 
+    Future<void> _onListenAudio(BuildContext context) async {
+      if (!item.saveMediaTranslation ||
+          item.saveMediaTranslationUrl == '0' ||
+          !my) {
+        return;
+      }
+
+      final url = item.saveMediaTranslationUrl;
+      if (url.isEmpty) {
+        showAppMessageBar(context, 'Ссылка на аудио недоступна');
+        return;
+      }
+
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (ctx) => AudioPlayerWidget(
+          url: 'https://media.molitvamira.ru$url',
+          onClose: () => Navigator.of(ctx).pop(),
+          name: item.title,
+          date: item.endAt.toString(),
+        ),
+      );
+    }
 
     Future<void> onChangeAvatar() async {
       if (!canEditAvatar) return;
@@ -258,18 +361,18 @@ class StreamCard extends ConsumerWidget {
         final key = (my: my, status: status);
         final ctrl = ref.read(streamsControllerProvider(key).notifier);
 
-        final res =
-        await ctrl.uploadStreamAvatar(streamId: item.id, bytes: bytes);
+        final res = await ctrl.uploadStreamAvatar(
+          streamId: item.id,
+          bytes: bytes,
+        );
 
         final statusText = (res['status'] ?? '').toString();
         final desc = (res['description'] ?? '').toString();
 
         showAppMessageBar(
           context,
-          statusText.isEmpty
-              ? 'Аватар трансляции обновлён'
-              : desc,
-          brand: Colors.greenAccent
+          statusText.isEmpty ? 'Аватар трансляции обновлён' : desc,
+          brand: Colors.greenAccent,
         );
       } catch (e) {
         showAppMessageBar(
@@ -281,17 +384,17 @@ class StreamCard extends ConsumerWidget {
         ref.read(_avatarBusyProvider(item.id).notifier).state = false;
       }
     }
+
     Widget actionPill() {
-      // ✅ SOS + модерация: вместо отсчёта показываем "ожидает модерации"
       if (isSos && isModeration && !isCompleted) {
-        return _WaitingModerationPill();
+        return const _WaitingModerationPill();
       }
 
-      if (!isSos && status == StreamStatus.planned){
-        return _CountdownPill(target: item.startAt,);
+      if (!isSos && status == StreamStatus.planned) {
+        return _CountdownPill(target: item.startAt);
       }
 
-      if (status == StreamStatus.blocked){
+      if (status == StreamStatus.blocked) {
         return Container(
           height: 32,
           padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -311,7 +414,7 @@ class StreamCard extends ConsumerWidget {
         );
       }
 
-      if (status == StreamStatus.finished){
+      if (status == StreamStatus.finished) {
         return Container(
           height: 32,
           padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -371,6 +474,211 @@ class StreamCard extends ConsumerWidget {
       );
     }
 
+    Widget prayerActionRow() {
+      return Row(
+        children: [
+          Expanded(
+            child: InkWell(
+              borderRadius: BorderRadius.circular(10),
+              onTap: busy ? null : onLikeToggle,
+              child: Container(
+                height: 36,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: liked ? const Color(0xFF2F66FF) : const Color(0xFFD9DFEA),
+                  ),
+                  color: Colors.white,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Буду молиться',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900,
+                          color: busy
+                              ? Colors.black38
+                              : (liked ? const Color(0xFF2F66FF) : Colors.black87),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Icon(
+                      liked
+                          ? Icons.volunteer_activism
+                          : Icons.volunteer_activism_outlined,
+                      size: 18,
+                      color: busy
+                          ? Colors.black38
+                          : (liked ? const Color(0xFF2F66FF) : Colors.black87),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      likesCount.toString(),
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w900,
+                        color: busy
+                            ? Colors.black38
+                            : (liked ? const Color(0xFF2F66FF) : Colors.black87),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: () => _showPrayerTextDialog(context),
+            child: Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.greenAccent),
+              ),
+              child: const Icon(
+                Icons.menu_book_outlined,
+                size: 18,
+                color: Colors.greenAccent,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    Widget regularActionsRow() {
+      return Row(
+        children: [
+          if (status == StreamStatus.active || status == StreamStatus.planned) ...[
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: actionPill(),
+              ),
+            ),
+            const SizedBox(width: 10),
+          ] else ...[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: actionPill(),
+            ),
+          ],
+          if (status == StreamStatus.active) ...[
+            ConstrainedBox(
+              constraints: const BoxConstraints(minWidth: 52),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.person,
+                      size: 18,
+                      color: Colors.black26,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      item.participants.toString(),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.black54,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ] else if (status == StreamStatus.planned) ...[
+            ConstrainedBox(
+              constraints: const BoxConstraints(minWidth: 52),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(10),
+                onTap: busy ? null : onLikeToggle,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        liked
+                            ? Icons.volunteer_activism
+                            : Icons.volunteer_activism_outlined,
+                        size: 18,
+                        color: busy
+                            ? Colors.black26
+                            : (liked ? Colors.orange : Colors.black26),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        likesCount.toString(),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.black54,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+          const Spacer(),
+          if (status == StreamStatus.finished &&
+              item.saveMediaTranslation &&
+              item.saveMediaTranslationUrl != '0' &&
+              my) ...[
+            InkWell(
+              onTap: () => _onListenAudio(context),
+              child: Container(
+                height: 32,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                alignment: Alignment.centerLeft,
+                decoration: BoxDecoration(
+                  color: Colors.greenAccent,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.headphones_outlined,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+          ],
+          InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: () => _showPrayerTextDialog(context),
+            child: Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.greenAccent),
+              ),
+              child: const Icon(
+                Icons.menu_book_outlined,
+                size: 18,
+                color: Colors.greenAccent,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
     return InkWell(
       borderRadius: BorderRadius.circular(14),
       onTap: () => _onOpen(context),
@@ -390,7 +698,6 @@ class StreamCard extends ConsumerWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // ROW 1
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -458,7 +765,6 @@ class StreamCard extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(width: 12),
-
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -475,9 +781,7 @@ class StreamCard extends ConsumerWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        item.description.isEmpty
-                            ? 'Без описания'
-                            : item.description,
+                        item.description.isEmpty ? 'Без описания' : item.description,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
@@ -487,106 +791,20 @@ class StreamCard extends ConsumerWidget {
                         ),
                       ),
                       const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          // слева — плашка
-                          if (status == StreamStatus.active ||
-                              status == StreamStatus.planned) ...[
-                            Expanded(
-                              child: Align(
-                                alignment: Alignment.centerLeft,
-                                child: actionPill(),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                          ] else ...[
-                            Align(
-                              alignment: Alignment.centerLeft,
-                              child: actionPill(),
-                            ),
-                          ],
-
-                          // справа — только для active/planned
-                          if (status == StreamStatus.active) ...[
-                            ConstrainedBox(
-                              constraints: const BoxConstraints(minWidth: 52),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 6,
-                                  vertical: 2,
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(
-                                      Icons.person,
-                                      size: 18,
-                                      color: Colors.black26,
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      item.participants.toString(),
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w900,
-                                        color: Colors.black54,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ] else if (status == StreamStatus.planned) ...[
-                            ConstrainedBox(
-                              constraints: const BoxConstraints(minWidth: 52),
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(10),
-                                onTap: busy ? null : onLikeToggle,
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 6,
-                                    vertical: 2,
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        liked
-                                            ? Icons.volunteer_activism
-                                            : Icons.volunteer_activism_outlined,
-                                        size: 18,
-                                        color: busy
-                                            ? Colors.black26
-                                            : (liked
-                                            ? Colors.orange
-                                            : Colors.black26),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        likesCount.toString(),
-                                        style: const TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w900,
-                                          color: Colors.black54,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
+                      showPlannedPrayerRow ? prayerActionRow() : regularActionsRow(),
                     ],
                   ),
                 ),
               ],
             ),
-
+            if (showPlannedPrayerRow) ...[
+              const SizedBox(height: 10),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: actionPill(),
+              ),
+            ],
             const SizedBox(height: 10),
-
-            // ROW 2
             Row(
               children: [
                 const Icon(Icons.access_time, size: 16, color: Colors.black38),
@@ -624,22 +842,19 @@ class StreamCard extends ConsumerWidget {
                   const SizedBox(width: 10),
                 ],
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: _statusBg(item.status_id),
+                    color: _statusBg(item.statusId),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Text(
-                    item.status_id == StreamStatusID.moderated
+                    item.statusId == StreamStatusID.moderated
                         ? 'На модерации'
-                        : item.status_id.label,
+                        : item.statusId.label,
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w900,
-                      color: _statusTextColor(item.status_id),
+                      color: _statusTextColor(item.statusId),
                     ),
                   ),
                 ),
@@ -652,7 +867,6 @@ class StreamCard extends ConsumerWidget {
   }
 }
 
-/// SOS + модерация: вместо отсчёта показываем статичную плашку
 class _WaitingModerationPill extends StatelessWidget {
   const _WaitingModerationPill();
 
@@ -680,7 +894,6 @@ class _WaitingModerationPill extends StatelessWidget {
   }
 }
 
-/// countdown pill
 class _CountdownPill extends StatefulWidget {
   final DateTime target;
 

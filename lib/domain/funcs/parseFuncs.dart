@@ -20,3 +20,9 @@ DateTime parseDt(dynamic v) {
   final iso = s.contains('T') ? s : s.replaceFirst(' ', 'T');
   return DateTime.tryParse(iso) ?? DateTime.now();
 }
+
+Map<String, dynamic> stringKeyedMap(Map raw) {
+  final out = <String, dynamic>{};
+  raw.forEach((k, v) => out[k.toString()] = v);
+  return out;
+}
