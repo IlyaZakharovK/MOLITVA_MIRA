@@ -1,16 +1,107 @@
-# vsem_mirom
+# Молитва мира (Flutter App)
 
-A new Flutter project.
+Мобильное приложение для православного сообщества: новости, молитвенные прошения, участие в сообществах и онлайн-трансляциях с живым чатом.
 
-## Getting Started
+## Что это за приложение
 
-This project is a starting point for a Flutter application.
+`Молитва мира` — клиентское Flutter-приложение для платформы `molitvamira.ru`.  
+Внутри приложения пользователь может:
 
-A few resources to get you started if this is your first Flutter project:
+- регистрироваться и входить в аккаунт;
+- просматривать новости сообществ;
+- подавать молитвенные просьбы;
+- вступать в сообщества и открывать их детали;
+- участвовать в аудио-трансляциях (включая чат и модерацию участников);
+- работать с уведомлениями, профилем и разделом помощи.
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+## Ключевые возможности
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+- **Авторизация и регистрация**: вход, регистрация, активация email, восстановление доступа.
+- **Лента новостей сообществ**: обновление, пагинация, переход в карточку сообщества.
+- **Молитвенные запросы**: создание/редактирование запросов с нужными параметрами.
+- **Сообщества**: просмотр общих и своих сообществ, экран деталей сообщества.
+- **Трансляции**: WebRTC-аудио, чат в реальном времени, управление звуком, список участников, модерация.
+- **Deep links**: переходы по ссылкам вида `/translations` и `/groups`.
+- **Профиль, уведомления, помощь**: базовые пользовательские разделы приложения.
+
+## Технологии
+
+- **Framework**: Flutter (Dart 3)
+- **State management**: Riverpod
+- **Networking**: Dio + cookie_jar + dio_cookie_manager
+- **Realtime/streaming**: flutter_webrtc + web_socket_channel
+- **Storage**: flutter_secure_storage
+- **Deep links**: app_links
+- **UI helpers**: flutter_svg, flutter_widget_from_html, slider_captcha
+
+## Архитектура проекта
+
+Проект построен по слоям с разделением ответственности:
+
+- `lib/domain` — доменные сущности, интерфейсы репозиториев, модели;
+- `lib/data` — реализации репозиториев, API-взаимодействие и маппинг данных;
+- `lib/presentation` — экраны, контроллеры и UI-компоненты;
+- `lib/api` — низкоуровневая API-конфигурация и клиент;
+- `lib/app` — инфраструктура приложения (reset scope, deep links и т.д.).
+
+Основная точка входа — `lib/main.dart` с маршрутизацией экранов и подключением сервисов.
+
+## Быстрый старт
+
+### 1) Требования
+
+- Flutter SDK (совместимый с `sdk: ^3.10.1`)
+- Android Studio / Xcode (в зависимости от целевой платформы)
+- Подключенное устройство или эмулятор
+
+### 2) Установка зависимостей
+
+```bash
+flutter pub get
+```
+
+### 3) Запуск
+
+```bash
+flutter run
+```
+
+### 4) Сборка релиза
+
+```bash
+flutter build apk
+```
+
+или
+
+```bash
+flutter build appbundle
+```
+
+## Конфигурация и окружение
+
+- Базовый API URL и параметры клиента заданы в `lib/api/api_config.dart`.
+- HTTP-клиент и cookie-хранилище настраиваются в `lib/api/myDio.dart`.
+- Приложение ориентировано на русский язык (`ru_RU`) и соответствующую локализацию интерфейса.
+
+## Навигация (основные роуты)
+
+- `/` — вход
+- `/register` — регистрация
+- `/news` — новости
+- `/communities` и `/my_communities` — сообщества
+- `/streams` и `/my_streams` — трансляции
+- `/live_stream` — экран активной трансляции
+- `/pray` — молитвенная просьба
+- `/profile` — профиль
+- `/notifications` — уведомления
+- `/help` — помощь
+
+## Планы по улучшению README
+
+Для еще более продуктового вида можно добавить:
+
+- скриншоты ключевых экранов;
+- схему пользовательских сценариев (onboarding -> участие -> трансляции);
+- краткий roadmap и changelog;
+- блок «Как контрибьютить».
